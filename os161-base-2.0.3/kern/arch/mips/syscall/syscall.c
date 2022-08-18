@@ -123,6 +123,31 @@ syscall(struct trapframe *tf)
 			);
 		break;
 
+		/* read() SYSTEM CALL */
+		case SYS_read:
+			err = sys_read_SHELL(
+				(int) tf->tf_a0, 
+				(void *) tf->tf_a1, 
+				(size_t) tf->tf_a2, 
+				&retval
+			);
+		break;
+
+		/* open() SYSTEM CALL */
+		case SYS_open:
+			err = sys_open_SHELL(
+				(userptr_t) tf->tf_a0, 
+				(int) tf->tf_a1, 
+				(mode_t) tf->tf_a2, 
+				&retval
+			);
+		break;
+
+		/* close() SYSTEM CALL */
+		case SYS_close:
+			err = sys_close_SHELL((int) tf->tf_a0);
+		break;
+
 		/* _exit() SYSTEM CALL */
 		case SYS__exit:
 			sys_exit_SHELL((int) tf->tf_a0);

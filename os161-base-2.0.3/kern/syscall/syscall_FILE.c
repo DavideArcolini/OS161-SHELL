@@ -168,57 +168,169 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
 #endif
 
 /**
- * @brief sys_open_SHELL() opens the file specified by pathname.
- *        If the specified file does not exist, it may optionally (if O_CREAT is specified 
- *        in flags) be created.
+ * @brief sys_open_SHELL() opens the file, device, or other kernel object named by the pathname 
+ *        provided. The flags argument specifies how to open the file. The optional mode argument 
+ *        is only meaningful in Unix and can be ignored. 
  * 
- *        The return value of open() is a file descriptor, a small, nonnegative integer that 
- *        is an index to an entry in the process's table of open file descriptors.
+ * ERRORS:
+ *      ENODEV		The device prefix of filename did not exist.
+ *      ENOTDIR		A non-final component of filename was not a directory.
+ *      ENOENT		A non-final component of filename did not exist.
+ *      ENOENT		The named file does not exist, and O_CREAT was not specified.
+ *      EEXIST		The named file exists, and O_EXCL was specified.
+ *      EISDIR		The named object is a directory, and it was to be opened for writing.   
+ *      //EMFILE		The process's file table was full, or a process-specific limit on open files was reached.  
+ *      //ENFILE		The system file table is full, if such a thing exists, or a system-wide limit on open files was reached.
+ *      ENXIO		The named object is a block device with no mounted filesystem.
+ *      ENOSPC		The file was to be created, and the filesystem involved is full.
+ *      //EINVAL		flags contained invalid values.
+ *      EIO		    A hard I/O error occurred.
+ *      EFAULT		filename was an invalid pointer. 
  * 
- * @param pathname relative or absolute path of the file
- * @param openflags optional flags specifying how to open the file (only read, only write, etc...)
- * @param mode specify the access mode to the file (granting access to specific users or groups)
- * @param errp error value in case of failure
- * @return the file descriptor value fd
-*/
-// #if OPT_SHELL
-// int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int *errp) {
+ * @param pathname relative or absolute path of the file to open
+ * @param openflags how to open the file
+ * @param mode can be ignored
+ * @param retval file handler of the open file
+ * @return zero on success. an error value in case of failure 
+ */
+#if OPT_SHELL
+int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retval) {
 
-//     // int fd;
-//     // struct vnode *v;
-    
-//     // /* OPENING FILE WITH VFS UTILITIES FUNCTIONS */
-//     // int result = vfs_open((char *) pathname, openflags, mode, &v);
-//     // if (result) {
-//     //     errp = ENOENT;
-//     //     return -1;
-//     // }
+    /* COPYING PATHNAME TO KERNEL SIDE */
+    char *kbuffer = (char *) kmalloc(strlen((const char *) pathname) * sizeof(char));
+    if (kbuffer == NULL) {
+        return ENOMEM;
+    }
+    size_t len;
+    int err = copyinstr((const_userptr_t) pathname, kbuffer, PATH_MAX, &len);
+    if (err) {
+        kfree(kbuffer);
+        return err;
+    }
 
-//     (void) pathname;
-//     (void) openflags;
-//     (void) mode;
-//     (void *) errp;
-//     return -1;
+    /* OPENING WITH VFS UTILITY */
+    struct vnode *v;
+    err = vfs_open(kbuffer, openflags, mode, &v);
+    if (err) {
+        kfree(kbuffer);
+        return err;
+    }
+    kfree(kbuffer);
 
-// }
-// #endif
+    /* RETRIEVING A FREE POSITION IN THE SYSTEM FILETABLE */
+    struct openfile *of = NULL;
+    for (int index = 0; index < SYSTEM_OPEN_MAX; index++) {
+        if (systemFileTable[index].vn == NULL) {
+            of = &systemFileTable[index];
+            of->vn = v;
+            break;
+        }
+    }
+
+    /* ASSIGNING OPENFILE TO CURRENT PROCESS FILETABLE */
+    int fd = 3;     // skipping STDIN, STDOUT and STDERR
+    if (of == NULL) {
+        return ENFILE;  // system file table is full
+    } else {
+        for (; fd < OPEN_MAX; fd++) {
+            if (curproc->fileTable[fd] == NULL) {
+                curproc->fileTable[fd] = of;
+                break;
+            }
+        }
+
+        if (fd == OPEN_MAX - 1) {
+            return EMFILE;  // process file table is full
+        }
+
+    }
+
+    /* MANAGING OFFSET */
+    if (openflags & O_APPEND) {
+
+            /* RETRIEVING OLD OFFSET */
+            struct stat filestat;
+            err = VOP_STAT(curproc->fileTable[fd]->vn, &filestat);
+            if (err) {
+                kfree(curproc->fileTable[fd]);
+                curproc->fileTable[fd] = NULL;
+                return err;
+            }
+            curproc->fileTable[fd]->offset = filestat.st_size;
+    } else {
+
+            /* SETTING NEW OFFSET */
+            curproc->fileTable[fd]->offset = 0;
+    }
+
+    /* MANAGING REFERENCES */
+    curproc->fileTable[fd]->count_refs = 1;
+
+    /* MANAGING MODE */
+    switch(mode){
+	    case O_RDONLY:
+			curproc->fileTable[fd]->mode_open = O_RDONLY;
+			break;
+		case O_WRONLY:
+			curproc->fileTable[fd]->mode_open = O_WRONLY;
+			break;
+		case O_RDWR:
+			curproc->fileTable[fd]->mode_open = O_RDWR;
+			break;
+		default:
+			vfs_close(curproc->fileTable[fd]->vn);
+			kfree(curproc->fileTable[fd]);
+			curproc->fileTable[fd] = NULL;
+			return EINVAL;
+	}
+
+    /* CREATING LOCK ON THIS FILE */
+    curproc->fileTable[fd]->lock = lock_create("FILE_LOCK");
+    if (curproc->fileTable[fd]->lock == NULL) {
+        vfs_close(curproc->fileTable[fd]->vn);
+        kfree(curproc->fileTable[fd]);
+        curproc->fileTable[fd] = NULL;
+        return ENOMEM;
+    }
+
+    /* TASK COMPLETED SUCCESSFULLY */
+    *retval = fd;
+    kprintf("[DEBUG] fd is: %d\n", fd);
+    return 0;
+}
+#endif
 
 /**
- * @brief sys_close_SHELL() closes a file descriptor, so that it no longer refers to any 
- *        file and may be reused.
- *        If fd is the last file descriptor referring to the underlying open file description, 
- *        the resources associated with the open file description are freed.
- * 
- *        It returns zero on success. On error, -1 is returned, and errno is set to indicate 
- *        the error.
+ * @brief the file handle fd is closed.
  * 
  * @param fd file descriptor
- * @return zero on success
+ * @return zero on success, an error value in case of failure 
 */
-// #if OPT_SHELL
-// int sys_close_SHELL(int fd) {
+#if OPT_SHELL
+int sys_close_SHELL(int fd) {
 
-//     (void) fd;
-//     return 0;
-// }
-// #endif
+    /* CHECKING FILE DESCRIPTOR */
+    if (fd < 0 || fd >= OPEN_MAX) {                                 /* fd should be a valid number                          */
+        return EBADF;       
+    } else if (curproc->fileTable[fd] == NULL) {                    /* fd should refer to a valid entry in the fileTable    */
+        return EBADF;
+    }
+
+    /* REDUCING REFERENCES */
+    struct openfile *of = curproc->fileTable[fd];
+    curproc->fileTable[fd] = NULL;
+    if (--of->count_refs > 0) {
+
+        /* THIS FILE IS STILL REFERENCED BY SOME PROCESS */
+        return 0;
+    } else {
+
+        /* NO MORE PROCESS REFER TO THIS FILE, CLOSING ALSO VNODE */
+        struct vnode *vn = of->vn;
+        of->vn = NULL;
+        vfs_close(vn);
+    }
+
+    return 0;
+}
+#endif

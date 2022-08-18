@@ -70,35 +70,27 @@ ssize_t sys_write_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval)
 ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval);
 #endif
 
+
 /**
- * @brief sys_open_SHELL() opens the file specified by pathname.
- *        If the specified file does not exist, it may optionally (if O_CREAT is specified 
- *        in flags) be created.
+ * @brief sys_open_SHELL() opens the file, device, or other kernel object named by the pathname 
+ *        provided. The flags argument specifies how to open the file. The optional mode argument 
+ *        is only meaningful in Unix and can be ignored. 
  * 
- *        The return value of open() is a file descriptor, a small, nonnegative integer that 
- *        is an index to an entry in the process's table of open file descriptors.
- * 
- * @param pathname relative or absolute path of the file
- * @param openflags optional flags specifying how to open the file (only read, only write, etc...)
- * @param mode specify the access mode to the file (granting access to specific users or groups)
- * @param errp error value in case of failure
- * @return the file descriptor value fd
-*/
+ * @param pathname relative or absolute path of the file to open
+ * @param openflags how to open the file
+ * @param mode can be ignored
+ * @param retval file handler of the open file
+ * @return zero on success. an error value in case of failure 
+ */
 #if OPT_SHELL
-int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int *errp);
+int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retval);
 #endif
 
 /**
- * @brief sys_close_SHELL() closes a file descriptor, so that it no longer refers to any 
- *        file and may be reused.
- *        If fd is the last file descriptor referring to the underlying open file description, 
- *        the resources associated with the open file description are freed.
- * 
- *        It returns zero on success. On error, -1 is returned, and errno is set to indicate 
- *        the error.
+ * @brief the file handle fd is closed.
  * 
  * @param fd file descriptor
- * @return zero on success
+ * @return zero on success, an error value in case of failure 
 */
 #if OPT_SHELL
 int sys_close_SHELL(int fd);
