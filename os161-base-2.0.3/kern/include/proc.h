@@ -37,6 +37,11 @@
  */
 
 #include <spinlock.h>
+#include "syscall_SHELL.h"		// to use openfile
+
+#if OPT_SHELL
+#include <limits.h>				// to use OPEN_MAX
+#endif
 
 struct addrspace;
 struct thread;
@@ -70,7 +75,14 @@ struct proc {
 	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
 
-	/* add more material here as needed */
+
+	/**
+	 * @brief file table of this specific process. Each process can have at maximum 
+	 * 		  OPEN_MAX files opened in the table.
+	 * 
+	 * 		  This struct will be initialized in proc_create() and freed in proc_destroy().
+	 */
+	struct openfile *fileTable[OPEN_MAX];
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */

@@ -36,6 +36,9 @@
 #include <current.h>
 #include <syscall.h>
 
+/* INCLUDES FOR NEW SYSTEM CALLS FOR SHELL PROJECT */
+#include "syscall_SHELL.h"
+
 
 /*
  * System call dispatcher.
@@ -101,19 +104,35 @@ syscall(struct trapframe *tf)
 
 	switch (callno) {
 	    case SYS_reboot:
-		err = sys_reboot(tf->tf_a0);
+			err = sys_reboot(tf->tf_a0);
 		break;
 
 	    case SYS___time:
-		err = sys___time((userptr_t)tf->tf_a0,
-				 (userptr_t)tf->tf_a1);
+			err = sys___time((userptr_t)tf->tf_a0, (userptr_t)tf->tf_a1);
 		break;
 
-	    /* Add stuff here */
+#if OPT_SHELL
+
+		/* write() SYSTEM CALL */
+		case SYS_write:
+			err = sys_write_SHELL(
+				(int) tf->tf_a0, 
+				(void *) tf->tf_a1, 
+				(size_t) tf->tf_a2, 
+				&retval
+			);
+		break;
+
+		/* _exit() SYSTEM CALL */
+		case SYS__exit:
+			sys_exit_SHELL((int) tf->tf_a0);
+			err = 0;
+		break;
+#endif
 
 	    default:
-		kprintf("Unknown syscall %d\n", callno);
-		err = ENOSYS;
+			kprintf("Unknown syscall %d\n", callno);
+			err = ENOSYS;
 		break;
 	}
 

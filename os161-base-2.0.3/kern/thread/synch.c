@@ -143,11 +143,13 @@ lock_create(const char *name)
 {
         struct lock *lock;
 
+        /* STRUCTURE INIT */
         lock = kmalloc(sizeof(*lock));
         if (lock == NULL) {
                 return NULL;
         }
 
+        /* ASSIGN A NAME TO THE LOCK */
         lock->lk_name = kstrdup(name);
         if (lock->lk_name == NULL) {
                 kfree(lock);
@@ -156,7 +158,19 @@ lock_create(const char *name)
 
 	HANGMAN_LOCKABLEINIT(&lock->lk_hangman, lock->lk_name);
 
-        // add stuff here as needed
+#if OPT_SHELL
+        /* CREATING THE NEW WAITING CHANNEL AND CHECKING */
+        lock->lk_wchan = wchan_create(lock->lk_name);
+        if (lock->lk_wchan == NULL) {
+                kfree(lock->lk_name);
+                kfree(lock);
+                return NULL;
+        }
+
+        /* INITALIZATION OF THE OWNER AND THE SPINLOCK */
+        lock->lk_owner = NULL; // at the beginning, no thread owns this lock
+        spinlock_init(&lock->lk_lock);
+#endif
 
         return lock;
 }
@@ -166,7 +180,11 @@ lock_destroy(struct lock *lock)
 {
         KASSERT(lock != NULL);
 
-        // add stuff here as needed
+#if OPT_SHELL
+        /* CLEANING UP USED STUFF */
+        spinlock_cleanup(&lock->lk_lock);
+        wchan_destroy(lock->lk_wchan);
+#endif
 
         kfree(lock->lk_name);
         kfree(lock);
@@ -178,10 +196,33 @@ lock_acquire(struct lock *lock)
 	/* Call this (atomically) before waiting for a lock */
 	//HANGMAN_WAIT(&curthread->t_hangman, &lock->lk_hangman);
 
-        // Write this
+#if OPT_SHELL
 
+        /* BE SURE THAT LOCK EXISTS*/
+        KASSERT(lock != NULL);
+
+        /* BE SURE THAT THE CURRENT THREAD DOES NOT ALREADY OWN THE LOCK */
+        KASSERT(lock_do_i_hold(lock) == false);
+
+        /* BE SURE THE CURRENT THREAD HAS INTERRUPTS DISABLED */
+        KASSERT(curthread->t_in_interrupt == false);
+
+        /* ATTEMPT TO ACQUIRE THE SPINLOCK, OTHERWISE SLEEP */
+        spinlock_acquire(&lock->lk_lock); 
+        while (lock->lk_owner != NULL) {
+	        wchan_sleep(lock->lk_wchan, &lock->lk_lock);
+        }
+
+        /* GET LOCK OWNERSHIP */
+        KASSERT(lock->lk_owner == NULL);
+        lock->lk_owner = curthread;
+
+        /* RELEASING SPINLOCK */
+        spinlock_release(&lock->lk_lock);
+
+#else 
         (void)lock;  // suppress warning until code gets written
-
+#endif
 	/* Call this (atomically) once the lock is acquired */
 	//HANGMAN_ACQUIRE(&curthread->t_hangman, &lock->lk_hangman);
 }
@@ -192,19 +233,42 @@ lock_release(struct lock *lock)
 	/* Call this (atomically) when the lock is released */
 	//HANGMAN_RELEASE(&curthread->t_hangman, &lock->lk_hangman);
 
-        // Write this
+#if OPT_SHELL
+        /* BE SURE THAT LOCK EXISTS*/
+        KASSERT(lock != NULL);
 
+        /* BE SURE THAT THE CURRENT THREAD OWNS THE LOCK */
+        KASSERT(lock_do_i_hold(lock) == true);
+
+        /* ACQUIRE THE LOCK AND CLEAR THE OWNERSHIP */
+        spinlock_acquire(&lock->lk_lock);
+        lock->lk_owner = NULL;
+
+        /* SIGNALLING THREADS WAITING FOR THE LOCK */
+        wchan_wakeone(lock->lk_wchan, &lock->lk_lock);
+
+        /* RELEASING THE LOCK */
+        spinlock_release(&lock->lk_lock);
+#else
         (void)lock;  // suppress warning until code gets written
+#endif
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
-        // Write this
+        bool res = true;
 
+#if OPT_SHELL
+
+        /* CHECKING WHETHER THE CURRENT THREAD IS ALREADY THE OWNER OF THE LOCK */
+        spinlock_acquire(&lock->lk_lock);
+	res = (lock->lk_owner == curthread);
+	spinlock_release(&lock->lk_lock);
+#else 
         (void)lock;  // suppress warning until code gets written
-
-        return true; // dummy until code gets written
+#endif
+        return res; 
 }
 
 ////////////////////////////////////////////////////////////

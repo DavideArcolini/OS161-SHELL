@@ -394,6 +394,9 @@ file      main/menu.c
 ########################################
 defoption shell
 
+optfile shell syscall/syscall_FILE.c
+optfile shell syscall/syscall_PROC.c
+
 ########################################
 #                                      #
 #             Filesystems              #

@@ -49,10 +49,65 @@
 #include <addrspace.h>
 #include <vnode.h>
 
+/* INCLUDES FOR CONSOLE INITIALIZATION */
+#include <synch.h>
+#include <kern/fcntl.h>
+#include <vfs.h>
+
 /*
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
+
+/**
+ * @brief For any given process, the first file descriptors (0, 1, and 2) are 
+ * 		  considered to be standard input (stdin), standard output (stdout), and
+ * 		  standard error (stderr). These file descriptors should start out attached 
+ * 		  to the console device ("con:").
+ * 
+ * @param name name that will be assigned to the lock
+ * @return int 
+ */
+#if OPT_SHELL
+static int console_init(const char *lock_name, struct proc *proc, int fd, int flag) {
+
+	/* ASSIGNMENT OF THE CONSOLE NAME */
+	char *con = kstrdup("con:");
+	if (con == NULL) {
+		return -1;
+	}
+
+	/* ALLOCATING SPACE IN THE FILETABLE */
+	proc->fileTable[fd] = (struct openfile *) kmalloc(sizeof(struct openfile));
+	if (proc->fileTable[fd] == NULL) {
+		kfree(con);
+		return -1;
+	}
+
+	/* OPENING ASSOCIATED FILE */
+	int err = vfs_open(con, flag, 0, &proc->fileTable[fd]->vn);
+	if (err) {
+		kfree(con);
+		kfree(proc->fileTable[fd]);
+		return -1;
+	}
+	kfree(con);
+
+	/* INITIALIZATION OF VALUES */
+	proc->fileTable[fd]->offset = 0;
+	proc->fileTable[fd]->lock = lock_create(lock_name);
+	if (proc->fileTable[fd]->lock == NULL) {
+		kfree(con);
+		vfs_close(proc->fileTable[fd]->vn);
+		kfree(proc->fileTable[fd]);
+		return -1;
+	}
+	proc->fileTable[fd]->count_refs = 1;
+	proc->fileTable[fd]->mode_open = flag;
+
+	return 0;
+}
+#endif
 
 /*
  * Create a proc structure.
@@ -81,6 +136,14 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
+
+#if OPT_SHELL
+	/**
+	 * @brief Zeroing out the block of memory used by the process fileTable (i.e.
+	 * 		  initializing the struct).
+	 */
+	bzero(proc->fileTable, OPEN_MAX * sizeof(struct openfile*));
+#endif
 
 	return proc;
 }
@@ -205,6 +268,17 @@ proc_create_runprogram(const char *name)
 	newproc->p_addrspace = NULL;
 
 	/* VFS fields */
+
+#if OPT_SHELL
+	/* CONSOLE INITIALIZATION FOR STDIN, STDOUT AND STDERR */
+	if (console_init("STDIN", newproc, 0, O_RDONLY) == -1) {
+		return NULL;
+	} else if (console_init("STDOUT", newproc, 1, O_WRONLY) == -1) {
+		return NULL;
+	} else if (console_init("STDERR", newproc, 2, O_WRONLY) == -1) {
+		return NULL;
+	}
+#endif
 
 	/*
 	 * Lock the current process to copy its current directory.
