@@ -145,7 +145,16 @@ syscall(struct trapframe *tf)
 
 		/* close() SYSTEM CALL */
 		case SYS_close:
-			err = sys_close_SHELL((int) tf->tf_a0);
+			err = sys_close_SHELL(
+				(int) tf->tf_a0
+			);
+		break;
+
+		/* remove() SYSTEM CALL */
+		case SYS_remove:
+			err = sys_remove_SHELL(
+				(char *) tf->tf_a0
+			);
 		break;
 
 		/* _exit() SYSTEM CALL */

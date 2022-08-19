@@ -97,6 +97,18 @@ int sys_close_SHELL(int fd);
 #endif
 
 /**
+ * @brief The name of the file referred to by pathname is removed from the filesystem. 
+ *        The actual file itself is not removed until no further references to it exist, 
+ *        whether those references are on disk or in memory.
+ * 
+ * @param pathname specify an existing file.
+ * @return zero on success, an error value in case of failure.
+ */
+#if OPT_SHELL
+int sys_remove_SHELL(const char *pathname);
+#endif
+
+/**
  * @brief Cause the current process to exit.
  * 
  * @param exitcode reported back to other process(es) via the waitpid() call.

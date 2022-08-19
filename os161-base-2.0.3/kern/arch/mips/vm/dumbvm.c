@@ -64,11 +64,80 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
-void
-vm_bootstrap(void)
-{
-	/* Do nothing. */
+/*
+ * Wrap getfreepages in a spinlock 
+*/
+#if OPT_SHELL
+static struct spinlock freemem_lock = SPINLOCK_INITIALIZER;
+#endif
+
+/*
+ *  +------+
+ *  | DATA |
+ *  +------+
+*/
+#if OPT_SHELL
+static int number_ram_pages = 0;					/* TOTAL NUMBER OF PAGES AT THE BEGINNING OF THE BOOTSTRAP 	*/
+static unsigned int *bitmap_freePages = NULL;		/* BITMAP STORING THE POSITION OF THE FREE PAGES 			*/
+static unsigned long *bitmap_sizePages = NULL; 		/* BITMAP STORING THE SIZE OF THE FREE PAGES 				*/
+
+static bool allocTableActive = false;				
+#endif
+
+/*
+ *  +-----------+
+ *  | FUNCTIONS |
+ *  +-----------+
+*/
+
+/**
+ * @brief Check if the allocation table is currently active or not
+ * 
+ * @return true if the table is active 
+ */
+#if OPT_SHELL
+static bool isTableActive(void) {
+	spinlock_acquire(&freemem_lock);
+	bool active = allocTableActive;
+	spinlock_release(&freemem_lock);
+	return active;
 }
+#endif
+
+/**
+ * @brief Initialize allocation table and stuff
+ * 
+ */
+void vm_bootstrap(void) {
+#if OPT_SHELL
+	/* DISCOVER HOW MANY PAGES CAN BE AVAILABLE IN RAM */
+	number_ram_pages = ((int) ram_getsize()) / PAGE_SIZE;
+
+	/* ALLOCATING BITMAP */
+	bitmap_freePages = (unsigned int *) kmalloc(number_ram_pages * sizeof(unsigned int));
+	bitmap_sizePages = (unsigned long *) kmalloc(number_ram_pages * sizeof(unsigned long));
+	if (bitmap_freePages == NULL || bitmap_sizePages == NULL) {
+		kprintf("[ERROR] kmalloc() failed execution");
+		bitmap_freePages = NULL;
+		bitmap_sizePages = NULL;
+		return;
+	}
+		
+	/* INITIALIZE BITMAP */
+	for (int i = 0; i < number_ram_pages; i++) {
+		bitmap_freePages[i] = 0;
+		bitmap_sizePages[i] = 0;
+	}
+
+	/* ENABLING ALLOCATION TABLE */
+	spinlock_acquire(&freemem_lock);
+	allocTableActive = true;
+	spinlock_release(&freemem_lock);
+
+	return;
+#endif
+}
+
 
 /*
  * Check if we're in a context that can sleep. While most of the
@@ -90,17 +159,98 @@ dumbvm_can_sleep(void)
 	}
 }
 
-static
-paddr_t
-getppages(unsigned long npages)
-{
-	paddr_t addr;
+/**
+ * @brief Return the physical address of the memory based on a bitmap-allocation strategy
+ *        Moreover, it updates the underlaying data structure. 
+ * 
+ * @param npages number of pages required to be allocated
+ * @return paddr_t physical address
+ */
+#if OPT_SHELL
+static paddr_t getfreeppages(unsigned long npages) {
 
-	spinlock_acquire(&stealmem_lock);
+	paddr_t addr = 0;
 
-	addr = ram_stealmem(npages);
+	/* CHECKING IF ALLOCATION TABLE IS ACTIVE (i.e., can use the LAB02 methods) */
+	if (!isTableActive()) {
+		return 0;
+	}
 
-	spinlock_release(&stealmem_lock);
+	/* GETTING LOCK ON MEMORY */
+	spinlock_acquire(&freemem_lock);
+
+	/* ALGORITHM FOR SEARCHING FREE PAGES */
+	long int start_tmp = -1;
+	long int start_adr = -1;
+	for (long int i = 0; i < number_ram_pages; i++) {
+
+		/* CHECKING IF THE POSITION IS AVAILABLE */
+		if (bitmap_freePages[i]) {
+
+			/* CASE IN WHICH START IS THE BEGINNING OF THE BITMAP */
+			if (i == 0 || bitmap_freePages[i-1] == 0) {
+				start_tmp = i;
+			}
+
+			/* CHECKING IF THE AVAILABLE POSITION IS SUFFICIENT FROM THE LAST START FOUND */
+			if (i - start_tmp + 1 >= (long int)npages) {
+				start_adr = start_tmp;
+				break;
+			}
+		}
+	}
+
+	/* CHECKING IF WE HAVE FOUND AN AVAILABLE SPACE */
+	if (start_adr != -1) {
+		for (long int i = 0; i < start_adr + (long int)npages; i++) {
+			bitmap_freePages[i] = 0;				/* UPDATING BITMAP OF POSITIONS */
+		}
+		bitmap_sizePages[start_adr] = npages;		/* UPDATING BITMAP OF DIMENSIONS */
+		addr = (paddr_t) start_adr * PAGE_SIZE; 
+	} else {
+		addr = 0;
+	}
+
+	/* RELEASING SPINLOCK */
+	spinlock_release(&freemem_lock);
+
+	return addr;
+}
+#endif
+
+/**
+ * @brief retrieves a valid address in which space in memory starts, based on the amount 
+ * 		  of pages (unsigned long npages) required by the process,
+ * 
+ * @param npages number of pages required by the process
+ * @return paddr_t a valid address
+ */
+static paddr_t getppages(unsigned long npages) {
+#if OPT_SHELL
+	/* GETTING PHYSICAL ADDRESS OF THE FREE PAGES */
+	paddr_t addr = getfreeppages(npages);
+#else
+	paddr_t addr = 0;
+#endif
+	
+	if (addr == 0) {
+
+		/* NO FREEE PAGES FOUND */
+		spinlock_acquire(&stealmem_lock);
+		addr = ram_stealmem(npages);							
+		spinlock_release(&stealmem_lock);
+	}
+
+#if OPT_SHELL
+	if (addr != 0 && isTableActive()) {
+
+		/* UPDATING BITMAP */
+		spinlock_acquire(&freemem_lock);
+		bitmap_sizePages[addr/PAGE_SIZE] = npages;				/* ALLOCATION OF THE VIRTUAL SPACE */
+		spinlock_release(&freemem_lock);
+	}
+#endif
+
 	return addr;
 }
 
@@ -118,13 +268,65 @@ alloc_kpages(unsigned npages)
 	return PADDR_TO_KVADDR(pa);
 }
 
-void
-free_kpages(vaddr_t addr)
-{
-	/* nothing - leak the memory. */
+/**
+ * @brief set to 1 the specific position of the bitmap_freePages data structure, in order to 
+ * 		  indicates that those pages are free to be used from now on.
+ * 
+ * @param paddr starting address of the memory to release
+ * @param size number of pages
+ */
+#if OPT_SHELL
+static void freeppages(paddr_t paddr, unsigned long size) {
 
-	(void)addr;
+	/* CHECKING IF TABLE IS ACTIVE */
+	if (!isTableActive()) {
+		return;
+	}
+
+	/* COMPUTING PHYSICAL ADDRESS */
+	unsigned long start_addr = paddr/PAGE_SIZE;
+
+	/* GET LOCK ON MEMORY */
+	spinlock_acquire(&freemem_lock);
+
+	/* FREEING (VIRTUALLY OBV) THE PAGES */
+	for (unsigned long i = start_addr; i < start_addr + size; i++) {
+		bitmap_freePages[i] = 1;
+	}
+
+	/* RELEASE LOCK */
+	spinlock_release(&freemem_lock);
+
+	return;
 }
+#endif
+
+/**
+ * @brief release memory starting at the address given based on the size stored in the bitmap
+ * 
+ * @param addr starting address of the memory block to release
+ */
+void free_kpages(vaddr_t addr) {
+#if OPT_SHELL
+	/* SEE IF FREE IS ABILITATED */
+	if (isTableActive()) {
+
+		/* COMPUTING PHYSICAL ADDRESS */
+		paddr_t paddr = addr - MIPS_KSEG0;
+		long int start_addr = paddr/PAGE_SIZE;
+
+		/* FREEING THE PAGES */
+		freeppages(paddr, bitmap_sizePages[start_addr]);
+
+	} else {
+		(void) addr;
+	}
+#else
+	(void) addr;
+#endif
+}
+
+
 
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)

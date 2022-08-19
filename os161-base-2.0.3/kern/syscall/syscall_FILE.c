@@ -173,19 +173,19 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
  *        is only meaningful in Unix and can be ignored. 
  * 
  * ERRORS:
- *      ENODEV		The device prefix of filename did not exist.
+ *      //ENODEV		The device prefix of filename did not exist.
  *      ENOTDIR		A non-final component of filename was not a directory.
- *      ENOENT		A non-final component of filename did not exist.
- *      ENOENT		The named file does not exist, and O_CREAT was not specified.
+ *      //ENOENT		A non-final component of filename did not exist.
+ *      //ENOENT		The named file does not exist, and O_CREAT was not specified.
  *      EEXIST		The named file exists, and O_EXCL was specified.
  *      EISDIR		The named object is a directory, and it was to be opened for writing.   
  *      //EMFILE		The process's file table was full, or a process-specific limit on open files was reached.  
  *      //ENFILE		The system file table is full, if such a thing exists, or a system-wide limit on open files was reached.
- *      ENXIO		The named object is a block device with no mounted filesystem.
+ *      //ENXIO		The named object is a block device with no mounted filesystem.
  *      ENOSPC		The file was to be created, and the filesystem involved is full.
  *      //EINVAL		flags contained invalid values.
  *      EIO		    A hard I/O error occurred.
- *      EFAULT		filename was an invalid pointer. 
+ *      //EFAULT		filename was an invalid pointer. 
  * 
  * @param pathname relative or absolute path of the file to open
  * @param openflags how to open the file
@@ -197,12 +197,15 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
 int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retval) {
 
     /* COPYING PATHNAME TO KERNEL SIDE */
+    // this is done for two reasons:
+    // 1) security reason
+    // 2) vfs_open may destroy the buffer
     char *kbuffer = (char *) kmalloc(strlen((const char *) pathname) * sizeof(char));
     if (kbuffer == NULL) {
         return ENOMEM;
     }
     size_t len;
-    int err = copyinstr((const_userptr_t) pathname, kbuffer, PATH_MAX, &len);
+    int err = copyinstr((const_userptr_t) pathname, kbuffer, PATH_MAX, &len); // may return EFAULT
     if (err) {
         kfree(kbuffer);
         return err;
@@ -210,7 +213,7 @@ int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retv
 
     /* OPENING WITH VFS UTILITY */
     struct vnode *v;
-    err = vfs_open(kbuffer, openflags, mode, &v);
+    err = vfs_open(kbuffer, openflags, mode, &v);   // may return ENOENT, ENXIO, ENODEV
     if (err) {
         kfree(kbuffer);
         return err;
@@ -246,9 +249,11 @@ int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retv
     }
 
     /* MANAGING OFFSET */
+    // if flag specified O_APPEND, the operation on the file should start at the end
+    // otherwise, it should start at the beginning
     if (openflags & O_APPEND) {
 
-            /* RETRIEVING OLD OFFSET */
+            /* RETRIEVING FILE SIZE */
             struct stat filestat;
             err = VOP_STAT(curproc->fileTable[fd]->vn, &filestat);
             if (err) {
@@ -259,7 +264,7 @@ int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retv
             curproc->fileTable[fd]->offset = filestat.st_size;
     } else {
 
-            /* SETTING NEW OFFSET */
+            /* STARTING FROM THE BEGINNING */
             curproc->fileTable[fd]->offset = 0;
     }
 
@@ -267,7 +272,7 @@ int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retv
     curproc->fileTable[fd]->count_refs = 1;
 
     /* MANAGING MODE */
-    switch(mode){
+    switch(openflags & O_ACCMODE){
 	    case O_RDONLY:
 			curproc->fileTable[fd]->mode_open = O_RDONLY;
 			break;
@@ -331,6 +336,25 @@ int sys_close_SHELL(int fd) {
         vfs_close(vn);
     }
 
+    return 0;
+}
+#endif
+
+/**
+ * @brief The name of the file referred to by pathname is removed from the filesystem. 
+ *        The actual file itself is not removed until no further references to it exist, 
+ *        whether those references are on disk or in memory.
+ * 
+ * @param pathname specify an existing file.
+ * @return zero on success, an error value in case of failure.
+ */
+#if OPT_SHELL
+int sys_remove_SHELL(const char *pathname) {
+
+    /* NOT IMPLEMENTED (YET?) */
+    (void) pathname;
+
+    /* TASK COMPLETED SUCCESSFULLY */
     return 0;
 }
 #endif
