@@ -157,10 +157,28 @@ syscall(struct trapframe *tf)
 			);
 		break;
 
+		/* getpid() SYSTEM CALL */
+		case SYS_getpid:
+			err = sys_getpid_SHELL(
+				(pid_t *) &retval
+			);
+		break;
+
+		/* waitpid() SYSTEM CALL */
+		case SYS_waitpid:
+			err = sys_waitpid_SHELL(
+				(pid_t) tf->tf_a0,
+				(int *) &retval,
+				(int) tf->tf_a1
+			);
+		break;
+
 		/* _exit() SYSTEM CALL */
 		case SYS__exit:
-			sys_exit_SHELL((int) tf->tf_a0);
-			err = 0;
+			sys_exit_SHELL(
+				(int) tf->tf_a0
+			);
+			err = 0;		
 		break;
 #endif
 

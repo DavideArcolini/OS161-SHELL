@@ -109,6 +109,30 @@ int sys_remove_SHELL(const char *pathname);
 #endif
 
 /**
+ * @brief Retrieve the PID of the current process
+ * 
+ * @param retval PID of the current process
+ * @return zero on success
+ */
+#if OPT_SHELL
+int sys_getpid_SHELL(pid_t *retval);
+#endif
+
+/**
+ * @brief Wait for the process specified by pid to exit, and return an encoded exit status 
+ *        in the integer pointed to by status. If that process has exited already, waitpid 
+ *        returns immediately. If that process does not exist, waitpid fails.
+ * 
+ * @param pid pid of the process to wait
+ * @param status exit status of the process to wait
+ * @param options not implemented
+ * @return zero on success, an error value in case of failure.
+ */
+#if OPT_SHELL
+int sys_waitpid_SHELL(pid_t pid, int *status, int options);
+#endif
+
+/**
  * @brief Cause the current process to exit.
  * 
  * @param exitcode reported back to other process(es) via the waitpid() call.

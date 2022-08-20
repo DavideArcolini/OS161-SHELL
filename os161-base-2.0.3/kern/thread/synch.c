@@ -292,7 +292,18 @@ cv_create(const char *name)
                 return NULL;
         }
 
-        // add stuff here as needed
+#if OPT_SHELL
+        /* WAITCHANNEL INITIALIZATION */
+        cv->cv_wchan = wchan_create(cv->cv_name);
+        if (cv->cv_wchan == NULL) {
+                kfree(cv->cv_name);
+                kfree(cv);
+                return NULL;
+        }
+
+        /* SPINLOCK INITIALIZATION */
+        spinlock_init(&cv->cv_lock);
+#endif
 
         return cv;
 }
@@ -302,7 +313,10 @@ cv_destroy(struct cv *cv)
 {
         KASSERT(cv != NULL);
 
-        // add stuff here as needed
+#if OPT_SHELL
+        spinlock_cleanup(&cv->cv_lock);
+        wchan_destroy(cv->cv_wchan);
+#endif
 
         kfree(cv->cv_name);
         kfree(cv);
@@ -311,7 +325,32 @@ cv_destroy(struct cv *cv)
 void
 cv_wait(struct cv *cv, struct lock *lock)
 {
-        // Write this
+#if OPT_SHELL
+        /* ASSERT LOCK AND CONDITION VARIABLE TO EXIST */
+        KASSERT(cv != NULL);
+        KASSERT(lock != NULL);
+
+        /* ASSERT CURRENT THREAD TO ACTUALLY BE THE OWNER OF THE LOCK */
+        KASSERT(lock_do_i_hold(lock));
+
+        /* ACQUIRING THE LOCK AND GET TO SLEEP */
+        spinlock_acquire(&cv->cv_lock);
+
+        /* 
+         * G.Cabodi - 2019: spinlock already owned as atomic lock_release+wchan_sleep needed 
+        */
+
+	lock_release(lock);
+	wchan_sleep(cv->cv_wchan,&cv->cv_lock);
+	spinlock_release(&cv->cv_lock);
+        
+	/* 
+         * G.Cabodi - 2019: spinlock already  released to avoid ownership while (possibly) going 
+         * to wait state in lock_acquire. Atomicity wakeup+lock_acquire not guaranteed (but not 
+         * necessary!) 
+        */
+	lock_acquire(lock);
+#endif
         (void)cv;    // suppress warning until code gets written
         (void)lock;  // suppress warning until code gets written
 }
@@ -319,7 +358,24 @@ cv_wait(struct cv *cv, struct lock *lock)
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
-        // Write this
+#if OPT_SHELL
+        /* ASSERT LOCK AND CONDITION VARIABLE TO EXIST */
+        KASSERT(cv != NULL);
+        KASSERT(lock != NULL);
+
+        /* ASSERT CURRENT THREAD TO ACTUALLY BE THE OWNER OF THE LOCK */
+        KASSERT(lock_do_i_hold(lock));
+
+	/* 
+         * G.Cabodi - 2019: here the spinlock is NOT required, as no atomic operation 
+         * has to be done. The spinlock is just acquired because needed by wakeone 
+        */
+
+        /* ACQUIRING THE LOCK AND WAKING UP THE FIRST THREAD IN THE LIST */
+	spinlock_acquire(&cv->cv_lock);
+	wchan_wakeone(cv->cv_wchan,&cv->cv_lock);
+	spinlock_release(&cv->cv_lock);
+#endif
 	(void)cv;    // suppress warning until code gets written
 	(void)lock;  // suppress warning until code gets written
 }
@@ -327,7 +383,24 @@ cv_signal(struct cv *cv, struct lock *lock)
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
-	// Write this
+#if OPT_SHELL
+        /* ASSERT LOCK AND CONDITION VARIABLE TO EXIST */
+        KASSERT(cv != NULL);
+        KASSERT(lock != NULL);
+
+        /* ASSERT CURRENT THREAD TO ACTUALLY BE THE OWNER OF THE LOCK */
+        KASSERT(lock_do_i_hold(lock));
+
+	/* 
+         * G.Cabodi - 2019: here the spinlock is NOT required, as no atomic operation 
+         * has to be done. The spinlock is just acquired because needed by wakeone 
+        */
+
+        /* ACQUIRING THE LOCK AND WAKING UP THE FIRST THREAD IN THE LIST */
+	spinlock_acquire(&cv->cv_lock);
+	wchan_wakeall(cv->cv_wchan,&cv->cv_lock);
+	spinlock_release(&cv->cv_lock);
+#endif
 	(void)cv;    // suppress warning until code gets written
 	(void)lock;  // suppress warning until code gets written
 }

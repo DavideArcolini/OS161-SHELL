@@ -75,6 +75,11 @@ struct proc {
 	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
 
+#if OPT_SHELL
+	int p_status;				/* current process status 	*/
+	pid_t p_pid;				/* current process PID		*/
+	struct cv *p_cv;			/* used for waitpid() syscall */
+	struct lock *p_locklock;	/* used for waitpid() syscall */
 
 	/**
 	 * @brief file table of this specific process. Each process can have at maximum 
@@ -83,6 +88,7 @@ struct proc {
 	 * 		  This struct will be initialized in proc_create() and freed in proc_destroy().
 	 */
 	struct openfile *fileTable[OPEN_MAX];
+#endif
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -108,6 +114,16 @@ struct addrspace *proc_getas(void);
 
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *);
+
+/**
+ * @brief Return the process associated to the given PID
+ * 
+ * @param pid pid of the process to retrieve
+ * @return struct proc* process associated to the pid
+ */
+#if OPT_SHELL
+struct proc *proc_search(pid_t pid);
+#endif
 
 
 #endif /* _PROC_H_ */

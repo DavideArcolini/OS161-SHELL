@@ -60,6 +60,46 @@
 struct proc *kproc;
 
 /**
+ * @brief The process table stuct stores an array of user processes, each identified by
+ * 		  a specific PID
+ */
+#if OPT_SHELL
+#define PROC_MAX 100				/* maximum number of allowed running process 	*/
+static struct _processTable {
+	bool is_active;					/* table is active and ready to use 			*/
+	struct proc *proc[PROC_MAX+1];	/* [0] not used, PID >= 1 						*/
+	pid_t last_pid;					/* last PID used in the table 					*/
+	struct spinlock lk;				/* lock for this table 							*/
+} processTable;
+#endif
+
+/**
+ * @brief Return the process associated to the given PID
+ * 
+ * @param pid pid of the process to retrieve
+ * @return struct proc* process associated to the pid
+ */
+#if OPT_SHELL
+struct proc *proc_search(pid_t pid) {
+
+	/* CHECKING PID CONSTRAINTS */
+	if (pid <= 0 || pid > PROC_MAX) {
+		kprintf("[ERROR] invalid pid\n");
+		return NULL;
+	}
+
+	/* RETRIEVING PROCESS BASED ON THE INDEX PID */
+	struct proc *proc = processTable.proc[pid];
+	if (proc->p_pid != pid) {
+		return NULL;
+	}
+
+	/* TASK COMPLETED SUCCESSFULLY */
+	return proc;
+}
+#endif
+
+/**
  * @brief For any given process, the first file descriptors (0, 1, and 2) are 
  * 		  considered to be standard input (stdin), standard output (stdout), and
  * 		  standard error (stderr). These file descriptors should start out attached 
@@ -85,7 +125,7 @@ static int console_init(const char *lock_name, struct proc *proc, int fd, int fl
 	}
 
 	/* OPENING ASSOCIATED FILE */
-	int err = vfs_open(con, flag, 0, &proc->fileTable[fd]->vn);
+	int err = vfs_open(con, O_RDONLY, 0, &proc->fileTable[fd]->vn);
 	if (err) {
 		kfree(con);
 		kfree(proc->fileTable[fd]);
@@ -97,7 +137,6 @@ static int console_init(const char *lock_name, struct proc *proc, int fd, int fl
 	proc->fileTable[fd]->offset = 0;
 	proc->fileTable[fd]->lock = lock_create(lock_name);
 	if (proc->fileTable[fd]->lock == NULL) {
-		kfree(con);
 		vfs_close(proc->fileTable[fd]->vn);
 		kfree(proc->fileTable[fd]);
 		return -1;
@@ -108,6 +147,88 @@ static int console_init(const char *lock_name, struct proc *proc, int fd, int fl
 	return 0;
 }
 #endif
+
+/**
+ * @brief Add the given process to the process table and manage the PID initialization.
+ * 
+ * @param proc newly created process
+ * @param name name of the process
+ * @return the pid of the process created, -1 on failure
+ */
+#if OPT_SHELL
+static int proc_init(struct proc *proc, const char *name) {
+
+	/* ACQUIRING THE SPINLOCK */
+	spinlock_acquire(&processTable.lk);
+	proc->p_pid = -1;
+
+	/* SEARCH FREE INDEX IN THE TABLE USING CIRCULAR STRATEGY */
+	int index = processTable.last_pid + 1;
+	index = (index > PROC_MAX) ? 1 : index;		// skipping [0] (kernel process)
+	while (index != processTable.last_pid) {
+		if (processTable.proc[index] == NULL) {
+			processTable.proc[index] = proc;
+			processTable.last_pid = index;
+			proc->p_pid = index;
+			break;
+		}
+		index++;
+		index = (index > PROC_MAX) ? 1 : index;
+	}
+
+	/* RELEASING THE SPINLOCK */
+	spinlock_release(&processTable.lk);
+	if (proc->p_pid <= 0) {
+		kprintf("[ERROR] process initialization failed...\n");
+		return proc->p_pid;
+	}
+
+	/* PROCESS STATUS INITIALIZATION */
+	proc->p_status = 0;
+
+	/* PROCESS CV AND LOCK INITIALIZATION */
+	proc->p_cv = cv_create(name);
+  	proc->p_locklock = lock_create(name);
+	if (proc->p_cv == NULL || proc->p_locklock == NULL) {
+		return -1;
+	}
+
+	/* TASK COMPLETED SUCCESSFULLY */
+	return proc->p_pid;
+}
+#endif
+
+/**
+ * @brief manage the process table when a process is destroyed.
+ * 
+ * @param proc the process that will be destroyed.
+ * @return 0 on sucess, any other value on failure.
+ */
+static int proc_deinit(struct proc *proc) {
+#if OPT_SHELL
+	/* ACQUIRING THE SPINLOCK */
+	spinlock_acquire(&processTable.lk);
+
+	/* ACQUIRING PROCESS PID */
+	int index = proc->p_pid;
+	if (index <= 0 || index > PROC_MAX) {
+		return -1;
+	}
+
+	/* RELEASING ENTRY IN PROCESS TABLE */
+	processTable.proc[index] = NULL;
+
+	/* PROCESS CV AND LOCK DESTROY */
+	cv_destroy(proc->p_cv);
+  	lock_destroy(proc->p_locklock);
+
+	/* RELEASING THE SPINLOCK */
+	spinlock_release(&processTable.lk);
+
+	/* TASK COMPLETED SUCCESSFULLY */
+	return 0;
+#endif
+}
 
 /*
  * Create a proc structure.
@@ -138,11 +259,20 @@ proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 #if OPT_SHELL
+
 	/**
 	 * @brief Zeroing out the block of memory used by the process fileTable (i.e.
 	 * 		  initializing the struct).
 	 */
 	bzero(proc->fileTable, OPEN_MAX * sizeof(struct openfile*));
+
+	/* ADD PROCESS TO THE PROCESS TABLE */
+	if (strcmp(name, "[kernel]") != 0 && proc_init(proc, name) <= 0) {
+		kfree(proc);
+		return NULL;
+	}
+
+	kprintf("[DEBUG] process created with PID: %d.\n", proc->p_pid);
 #endif
 
 	return proc;
@@ -231,6 +361,12 @@ proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
+#if OPT_SHELL
+	if (proc_deinit(proc) != 0) {
+		panic("[ERROR] some errors occurred in the management of the process table\n");
+	}
+#endif
+
 	kfree(proc->p_name);
 	kfree(proc);
 }
@@ -241,10 +377,24 @@ proc_destroy(struct proc *proc)
 void
 proc_bootstrap(void)
 {
+
+	/* KERNEL PROCESS INITIALIZATION AND CREATION */
 	kproc = proc_create("[kernel]");
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
+
+	/* USER PROCESS INITIALIZATION (TABLE) */
+#if OPT_SHELL
+	spinlock_init(&processTable.lk);	/* lock initialization 								*/
+	processTable.proc[0] = kproc;		/* registering kernel process in the process table 	*/
+	KASSERT(processTable.proc[0] != NULL);
+	for (int i = 1; i <= PROC_MAX; i++) {
+		processTable.proc[i] = NULL;
+	}
+	processTable.is_active = true;		/* activating the process table 					*/
+	processTable.last_pid = 0;			/* last used PID 									*/
+#endif
 }
 
 /*

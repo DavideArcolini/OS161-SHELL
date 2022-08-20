@@ -52,6 +52,8 @@
  * -----------------
  */
 #include "opt-shell.h"
+#include "syscall_SHELL.h"
+#include <current.h>
 
 /*
  * In-kernel menu and command dispatcher.
@@ -140,10 +142,17 @@ common_prog(int nargs, char **args)
 		return result;
 	}
 
-	/*
-	 * The new process will be destroyed when the program exits...
-	 * once you write the code for handling that.
-	 */
+#if OPT_SHELL
+	pid_t pid = proc->p_pid;
+	int exitstatus;
+	kprintf("[!] %d is waiting for %d...\n", curproc->p_pid, pid);
+	int err = sys_waitpid_SHELL(pid, &exitstatus, 0);
+	if (err != 0) {
+		return err;
+	} else {
+		kprintf("[!] process %d terminated with exit status %d\n", pid, exitstatus);
+	}
+#endif
 
 	return 0;
 }
