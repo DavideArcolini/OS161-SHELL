@@ -19,6 +19,7 @@
 
 #include <types.h>
 #include <lib.h>
+#include <mips/trapframe.h>
 #include "opt-shell.h"
 
 /**
@@ -140,6 +141,25 @@ int sys_waitpid_SHELL(pid_t pid, int *status, int options);
  */
 #if OPT_SHELL
 void sys_exit_SHELL(int exitcode);
+#endif
+
+/**
+ * @brief It duplicates the currently running process. The two copies are identical, except 
+ *        that one (the "new" one, or "child"), has a new, unique process id, and in the 
+ *        other (the "parent") the process id is unchanged. 
+ * 
+ *        The two processes do not share memory or open file tables; this state is copied into 
+ *        the new process, and subsequent modification in one process does not affect the other.
+ * 
+ *        However, the file handle objects the file tables point to are shared, so, for instance, 
+ *        calls to lseek in one process can affect the other. 
+ * 
+ * @param ctf trapframe of the process
+ * @param retval PID of the newly created process.
+ * @return zero on success, an error value in case of failure. 
+ */
+#if OPT_SHELL
+int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval);
 #endif
 
 #endif /* _SYSCALL_SHELL_H_ */

@@ -131,3 +131,81 @@ void sys_exit_SHELL(int exitcode) {
     panic("[!] Wait! You should not be here. Some errors happened during thread_exit()...\n");
 }
 #endif
+
+/**
+ * @brief It duplicates the currently running process. The two copies are identical, except 
+ *        that one (the "new" one, or "child"), has a new, unique process id, and in the 
+ *        other (the "parent") the process id is unchanged. 
+ * 
+ *        The two processes do not share memory or open file tables; this state is copied into 
+ *        the new process, and subsequent modification in one process does not affect the other.
+ * 
+ *        However, the file handle objects the file tables point to are shared, so, for instance, 
+ *        calls to lseek in one process can affect the other. 
+ * 
+ * @param ctf trapframe of the process
+ * @param retval PID of the newly created process.
+ * @return zero on success, an error value in case of failure. 
+ */
+#if OPT_SHELL
+int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
+
+    /* ASSERTING CURRENT PROCESS TO ACTUALLY EXIST */
+    KASSERT(curproc != NULL);
+
+    /* CHECKING SPACE AVAILABILITY IN PROCESS TABLE */
+    int index = find_valid_pid();
+    if (index <= 0) {
+        return ENPROC;  /* There are already too many processes on the system. */
+    }
+
+    /* CREATING NEW RUNNABLE PROCESS */
+    struct proc *newproc = proc_create_runprogram(curproc->p_name);
+    if (newproc == NULL) {
+        return ENOMEM;  /* Sufficient virtual memory for the new process was not available. */
+    }
+
+    /* COPYING ADDRESS SPACE */
+    int err = as_copy(curproc->p_addrspace, &(newproc->p_addrspace));
+    if (err) {
+        proc_destroy(newproc);
+        return err;
+    }
+
+    /* COPYING PARENT'S TRAPFRAME */
+    struct trapframe *tf_child = (struct trapframe *) kmalloc(sizeof(struct trapframe));
+    if(tf_child == NULL){
+        proc_destroy(newproc);
+        return ENOMEM; 
+    }
+    memcpy(tf_child, ctf, sizeof(struct trapframe));
+
+    /* TO BE DONE: linking parent/child, so that child terminated on parent exit */
+
+    /* ADDING NEW PROCESS TO THE PROCESS TABLE */
+    err = proc_add((pid_t) index, newproc);
+    if (err == -1) {
+        return ENOMEM;
+    }
+
+    /* CALLING THREAD FORK() AND START NEW THREAD ROUTINE */
+    err = thread_fork(
+        curthread->t_name,                  /* same name as the parent  */
+        newproc,                            /* newly created process    */      
+        call_enter_forked_process,          /* routine to start         */
+        (void *) tf_child,                  /* child trapframe          */
+        (unsigned long) 0                   /* unused                   */
+    );
+
+    if (err) {
+        proc_remove((pid_t) index);
+        proc_destroy(newproc);
+        kfree(tf_child);
+        return err;
+    }
+
+    /* TASK COMPLETED SUCCESSFULLY */
+    *retval = newproc->p_pid;
+    return 0;
+}
+#endif

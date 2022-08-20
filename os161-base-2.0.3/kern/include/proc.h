@@ -125,5 +125,46 @@ struct addrspace *proc_setas(struct addrspace *);
 struct proc *proc_search(pid_t pid);
 #endif
 
+/**
+ * @brief Starts the new generated thread
+ * 
+ * @param tfv trapframe of the new thread.
+ * @param dummy not used.
+ */
+#if OPT_SHELL
+void call_enter_forked_process(void *tfv, unsigned long dummy);
+#endif
+
+/**
+ * @brief Search in the process table a valid PID for an eventual
+ * 		  new process.
+ * 
+ * @return PID on success, an error value in case of failure.
+ */
+#if OPT_SHELL
+int find_valid_pid(void);
+#endif
+
+/**
+ * @brief Add the given process to the process table, at the given index.
+ * 
+ * @param pid index in the table (PID)
+ * @param proc process to be added
+ * 
+ * @return zero on success, an error value in case of failure
+ */
+#if OPT_SHELL
+int proc_add(pid_t pid, struct proc *proc);
+#endif
+
+/**
+ * @brief Remove the process associated to the given pid from the process 
+ * 		  table.
+ * 
+ * @param pid pid of the process.
+ */
+#if OPT_SHELL
+void proc_remove(pid_t pid);
+#endif
 
 #endif /* _PROC_H_ */

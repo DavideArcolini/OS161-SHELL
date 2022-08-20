@@ -34,6 +34,7 @@
 #include <mips/trapframe.h>
 #include <thread.h>
 #include <current.h>
+#include <addrspace.h>
 #include <syscall.h>
 
 /* INCLUDES FOR NEW SYSTEM CALLS FOR SHELL PROJECT */
@@ -180,6 +181,14 @@ syscall(struct trapframe *tf)
 			);
 			err = 0;		
 		break;
+
+		/* fork() SYSTEM CALL */
+		case SYS_fork:
+			err = sys_fork_SHELL(
+				tf, 
+				(pid_t *) &retval
+			);
+		break;
 #endif
 
 	    default:
@@ -228,5 +237,21 @@ syscall(struct trapframe *tf)
 void
 enter_forked_process(struct trapframe *tf)
 {
+
+#if OPT_SHELL
+
+	struct trapframe forkedTf = *tf; // copy trap frame onto kernel stack
+	kfree(tf);
+
+	forkedTf.tf_v0 = 0; 	// return value is 0
+    forkedTf.tf_a3 = 0; 	// return with success
+	forkedTf.tf_epc += 4; 	// return to next instruction
+
+	as_activate();
+
+	mips_usermode(&forkedTf);
+#else
 	(void)tf;
+#endif
+
 }

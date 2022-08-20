@@ -48,11 +48,13 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <syscall.h>
 
 /* INCLUDES FOR CONSOLE INITIALIZATION */
 #include <synch.h>
 #include <kern/fcntl.h>
 #include <vfs.h>
+
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -71,6 +73,103 @@ static struct _processTable {
 	pid_t last_pid;					/* last PID used in the table 					*/
 	struct spinlock lk;				/* lock for this table 							*/
 } processTable;
+#endif
+
+/**
+ * @brief Search in the process table a valid PID for an eventual
+ * 		  new process.
+ * 
+ * @return PID on success, an error value in case of failure.
+ */
+#if OPT_SHELL
+int find_valid_pid(void) {
+	
+	/* CHECKING SPACE AVAILABILITY IN PROCESS TABLE WITH CIRCULAR BUFFER */
+	int index = (processTable.last_pid + 1 > PROC_MAX) ? 1 : processTable.last_pid + 1;
+	while (index != processTable.last_pid) {
+        if (processTable.proc[index] == NULL) {
+            break;
+        }
+
+        index ++;
+        index = (index > PROC_MAX) ? 1 : index;
+    }
+
+	/* POSITION NOT FOUND */
+	if (index == processTable.last_pid) {
+        return -1; 
+    }
+
+	/* POSITION FOUND */
+	return index;
+}
+#endif
+
+/**
+ * @brief Add the given process to the process table, at the given index.
+ * 
+ * @param pid index in the table (PID)
+ * @param proc process to be added
+ * 
+ * @return zero on success, an error value in case of failure
+ */
+#if OPT_SHELL
+int proc_add(pid_t pid, struct proc *proc) {
+
+	/* EVALUATING PARAMETERS */
+	if (pid <= 0 || pid > PROC_MAX+1 || proc == NULL) {
+		return -1;
+	}
+
+	/* ADDING PROCESS */
+	spinlock_acquire(&processTable.lk);
+	processTable.proc[pid] = proc;
+
+	/* UPDATE LAST PID POSITION */
+	processTable.last_pid = pid;
+	spinlock_release(&processTable.lk);
+
+	/* TASK COMPLETED SUCCESSFULLY */
+	return 0;
+}
+#endif
+
+/**
+ * @brief Remove the process associated to the given pid from the process 
+ * 		  table.
+ * 
+ * @param pid pid of the process.
+ */
+#if OPT_SHELL
+void proc_remove(pid_t pid) {
+
+	/* REMOVING PROCESS */
+	spinlock_acquire(&processTable.lk);
+	processTable.proc[pid] = NULL;
+	spinlock_release(&processTable.lk);
+
+
+}
+#endif
+
+/**
+ * @brief Starts the new generated thread
+ * 
+ * @param tfv trapframe of the new thread.
+ * @param dummy not used
+ */
+#if OPT_SHELL
+void call_enter_forked_process(void *tfv, unsigned long dummy) {
+
+	(void) dummy;
+
+	/* CALLING BUILT-IN FUNCTION */
+	struct trapframe *tf = (struct trapframe *) tfv;
+	enter_forked_process(tf); 
+
+	/* SHOULD NOT GET HERE */
+	panic("[!] enter_forked_process() returned unexpectedly\n");
+}
 #endif
 
 /**
