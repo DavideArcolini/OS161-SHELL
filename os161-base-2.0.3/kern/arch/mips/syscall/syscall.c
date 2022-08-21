@@ -224,6 +224,14 @@ syscall(struct trapframe *tf)
 				(pid_t *) &retval
 			);
 		break;
+
+		/* execv() SYSTEM CALL */
+		case SYS_execv:
+			err = sys_execv_SHELL(
+				(char *) tf->tf_a0,
+				(char **) tf->tf_a1
+			);
+		break;
 #endif
 
 	    default:

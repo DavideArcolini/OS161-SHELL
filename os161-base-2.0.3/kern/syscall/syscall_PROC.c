@@ -32,6 +32,7 @@
 #include <addrspace.h>
 #include <kern/wait.h>
 #include <mips/trapframe.h>
+#include <syscall.h>
 #include "syscall_SHELL.h"
 
 
@@ -207,5 +208,143 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
     /* TASK COMPLETED SUCCESSFULLY */
     *retval = newproc->p_pid;
     return 0;
+}
+#endif
+
+/**
+ * @brief Replaces the currently executing program with a newly loaded program image. This occurs 
+ *        within one process; the process id is unchanged. 
+ * 
+ * @param pathname pathname of the program to run 
+ * @param argv an array of 0-terminated strings. The array itself should be terminated by a NULL pointer. 
+ * @return zero on success, and error value in case of failure 
+ */
+#if OPT_SHELL
+int sys_execv_SHELL(const char *pathname, char *argv[]) {
+
+    /* CHECKING INPUT ARGUMENTS */
+    if (pathname == NULL) {
+        return EFAULT;      // One of the args is an invalid pointer.
+    }
+
+    /* COPYING PATHNAME FROM USER LAND TO KERNEL LAND */
+    // 1) security reason
+    // 2) pathname may be corrupted during its use
+    char *kpathname = (char *) kmalloc(PATH_MAX * sizeof(char));
+    if (kpathname == NULL) {
+        return ENOMEM;
+    }
+    int err = copyinstr((const_userptr_t) pathname, kpathname, PATH_MAX, NULL);
+    if (err) {
+        kfree(kpathname);
+        return err;
+    }
+
+    /* COUNTING NUMBER OF ARGUMENTS */
+    int args;
+    for (args = 0; argv[args]; args++);
+
+    /* COPYING ARGUMENTS FROM USER LAND TO KERNEL LAND */
+    char **kargv = (char **) kmalloc(args * sizeof(char *));
+    if (kargv == NULL) {
+        kfree(kpathname);
+        return ENOMEM;
+    }
+    for (int i = 0; i < args; i++) {
+        kargv[i] = (char *) kmalloc((strlen(argv[i]+1)) * sizeof(char));
+        if (kargv[i] == NULL) {
+            for (int j = 0; j < i; j++) {
+                kfree(kargv[j]);
+            }
+            kfree(kpathname);
+            kfree(kargv);
+            return ENOMEM;
+        }
+
+        /* PERFORMING COPY WITH copyinstr() */
+        err = copyinstr((const_userptr_t) argv[i], kargv[i], strlen(argv[i])+1, NULL);
+        if (err) {
+            for (int j = 0; j < i; j++) {
+                kfree(kargv[j]);
+            }
+            kfree(kpathname);
+            kfree(kargv);
+            return err;
+        }
+    }
+
+    /* OPENING THE FILE */
+    struct vnode *vn = NULL;
+    err = vfs_open(kpathname, O_RDONLY, 0, &vn);
+    if (err) {
+        for (int j = 0; j < args; j++) {
+            kfree(kargv[j]);
+        }
+        kfree(kpathname);
+        kfree(kargv);
+        return err;
+    }
+
+    /* CREATING NEW ADDRESS SPACE */
+    struct addrspace *newas = as_create();
+    if (newas == NULL) {
+        vfs_close(vn);
+        for (int j = 0; j < args; j++) {
+            kfree(kargv[j]);
+        }
+        kfree(kpathname);
+        kfree(kargv);
+        return ENOMEM;
+    }
+
+    /* SWITCH TO IT AND ACTIVATED IT */
+    struct addrspace *oldas = proc_setas(newas);
+    as_destroy(oldas);
+    as_activate();
+
+    /* LOAD THE EXECUTABLE */
+    vaddr_t entrypoint;
+    err = load_elf(vn, &entrypoint);
+    if (err) {
+        vfs_close(vn);
+        for (int j = 0; j < args; j++) {
+            kfree(kargv[j]);
+        }
+        kfree(kpathname);
+        kfree(kargv);
+        return err;
+    }
+
+    /* DONE WITH THE FILE NOW */
+    vfs_close(vn);
+
+    /* DEFINE THE USER STACK IN THE ADDRESS SPACE */
+    vaddr_t stackptr;
+    err = as_define_stack(newas, &stackptr);
+    if (err) {
+        for (int j = 0; j < args; j++) {
+            kfree(kargv[j]);
+        }
+        kfree(kpathname);
+        kfree(kargv);
+        return err;
+    }
+
+
+    /* COPYING BACK ARGS FROM KERNEL LAND TO USER LAND */
+    // TODO
+    // NB: pay attention to the padding (either done here or when copying from user to kernel)
+
+    /* WRAP TO USER MODE */
+    enter_new_process(
+        (int) args,
+        (userptr_t) stackptr,
+        NULL,
+        stackptr,
+        entrypoint
+    );
+
+    /* SHOULD NOT GET HERE */
+    return EINVAL;
 }
 #endif

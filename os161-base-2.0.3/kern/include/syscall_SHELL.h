@@ -239,4 +239,16 @@ void sys_exit_SHELL(int exitcode);
 int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval);
 #endif
 
+/**
+ * @brief Replaces the currently executing program with a newly loaded program image. This occurs 
+ *        within one process; the process id is unchanged. 
+ * 
+ * @param pathname pathname of the program to run 
+ * @param argv an array of 0-terminated strings. The array itself should be terminated by a NULL pointer. 
+ * @return zero on success, and error value in case of failure 
+ */
+#if OPT_SHELL
+int sys_execv_SHELL(const char *pathname, char *argv[]);
+#endif
+
 #endif /* _SYSCALL_SHELL_H_ */
