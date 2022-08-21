@@ -408,3 +408,44 @@ int sys_chdir_SHELL(const char *pathname) {
     return 0;
 }
 #endif
+
+/**
+ * @brief The name of the current directory is computed and stored in buf, an area of size buflen. 
+ *        The length of data actually stored, which must be non-negative, is returned. 
+ * 
+ * @param buf buffer to store the result
+ * @param buflen length of the buffer in which to store the result
+ * @param retval the length of data actually stored
+ * @return zero on success, an error value in case of failure 
+ */
+#if OPT_SHELL
+int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval) {
+
+    /* SOME ASSERTIONS */
+    KASSERT(curthread != NULL);
+    KASSERT(curthread->t_proc != NULL);
+
+    /* INITIALIZING DATA FOR READING */
+    struct uio u;
+    struct iovec iov;
+    iov.iov_ubase = (userptr_t) buf;            
+	iov.iov_len = buflen;
+	u.uio_iov = &iov;
+	u.uio_iovcnt = 1;
+	u.uio_resid = buflen;
+	u.uio_offset = 0;
+	u.uio_segflg = UIO_USERSPACE;
+	u.uio_rw = UIO_READ;
+	u.uio_space = curthread->t_proc->p_addrspace;
+
+    /* READING CURRENT DIRECTORY WITH VFS UTILITIES */
+    int err = vfs_getcwd(&u);
+	if (err) {
+		return err;
+	}
+
+    /* TASK COMPLETED SUCCESSFULLY */
+    *retval = buflen - u.uio_resid;
+    return 0;
+}
+#endif

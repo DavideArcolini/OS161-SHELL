@@ -119,7 +119,18 @@ int sys_remove_SHELL(const char *pathname);
 int sys_chdir_SHELL(const char *pathname);
 #endif
 
-
+/**
+ * @brief The name of the current directory is computed and stored in buf, an area of size buflen. 
+ *        The length of data actually stored, which must be non-negative, is returned. 
+ * 
+ * @param buf buffer to store the result
+ * @param buflen length of the buffer in which to store the result
+ * @param retval the length of data actually stored
+ * @return zero on success, an error value in case of failure 
+ */
+#if OPT_SHELL
+int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval);
+#endif
 
 
 

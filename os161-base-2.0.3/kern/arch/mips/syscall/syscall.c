@@ -165,6 +165,15 @@ syscall(struct trapframe *tf)
 			);
 		break;
 
+		/* __getcwd() SYSTEM CALL */
+		case SYS___getcwd:
+			err = sys_getcwd_SHELL(
+				(char *) tf->tf_a0,
+				(size_t) tf->tf_a1,
+				&retval
+			);
+		break;
+
 		/* getpid() SYSTEM CALL */
 		case SYS_getpid:
 			err = sys_getpid_SHELL(
