@@ -165,6 +165,15 @@ syscall(struct trapframe *tf)
 			);
 		break;
 
+		/* dup2() SYSTEM CALL */
+		case SYS_dup2:
+			err = sys_dup2_SHELL(
+				(int) tf->tf_a0,
+				(int) tf->tf_a1,
+				&retval
+			);
+		break;
+
 		/* __getcwd() SYSTEM CALL */
 		case SYS___getcwd:
 			err = sys_getcwd_SHELL(

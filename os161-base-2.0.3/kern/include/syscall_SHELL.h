@@ -132,6 +132,27 @@ int sys_chdir_SHELL(const char *pathname);
 int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval);
 #endif
 
+/**
+ * @brief dup2 clones the file handle oldfd onto the file handle newfd. If newfd names an open file, 
+ *        that file is closed. 
+ * 
+ * @param oldfd old file descriptor
+ * @param newfd new file descriptor
+ * @param retval new file descriptor
+ * @return zero on success, an error value on failure 
+ */
+#if OPT_SHELL
+int sys_dup2_SHELL(int oldfd, int newfd, int32_t *retval);
+#endif
+
+
+
+
+
+
+
+
+
 
 
 

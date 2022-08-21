@@ -323,10 +323,12 @@ int sys_close_SHELL(int fd) {
 
     /* REDUCING REFERENCES */
     struct openfile *of = curproc->fileTable[fd];
+    lock_acquire(of->lock);
     curproc->fileTable[fd] = NULL;
     if (--of->count_refs > 0) {
 
         /* THIS FILE IS STILL REFERENCED BY SOME PROCESS */
+        lock_release(of->lock);
         return 0;
     } else {
 
@@ -336,6 +338,7 @@ int sys_close_SHELL(int fd) {
         vfs_close(vn);
     }
 
+    lock_release(of->lock);
     return 0;
 }
 #endif
@@ -446,6 +449,65 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval) {
 
     /* TASK COMPLETED SUCCESSFULLY */
     *retval = buflen - u.uio_resid;
+    return 0;
+}
+#endif
+
+/**
+ * @brief dup2 clones the file handle oldfd onto the file handle newfd. If newfd names an open file, 
+ *        that file is closed. 
+ * 
+ * @param oldfd old file descriptor
+ * @param newfd new file descriptor
+ * @param retval new file descriptor
+ * @return zero on success, an error value on failure 
+ */
+#if OPT_SHELL
+int sys_dup2_SHELL(int oldfd, int newfd, int32_t *retval) {
+
+    struct openfile *of;
+
+    /* SOME ASSERTION */
+    KASSERT(curproc != NULL);
+
+    /* CHECKING INPUT ARGUMENTS */
+    if (oldfd < 0 || oldfd >= OPEN_MAX || newfd < 0 || newfd >= OPEN_MAX) {
+        return EBADF;   // invalid file handler
+    } else if (curproc->fileTable[oldfd] == NULL) {
+        return EBADF;   // invalid file handler
+    } else if (oldfd == newfd) {
+        return 0;       // using dup2 to clone a file handle onto itself has no effect
+    } 
+
+    /* CHECKING WHETHER newfd REFERS TO AN OPEN FILE */
+    if (curproc->fileTable[newfd] != NULL) {
+        
+        /* newfd REFERS TO AN OPEN FILE --> CLOSE IT */
+        of = curproc->fileTable[newfd];
+        lock_acquire(of->lock);
+        curproc->fileTable[newfd] = NULL;
+        if (--of->count_refs == 0) {
+
+            /* NO MORE PROCESS REFER TO THIS FILE, CLOSING ALSO VNODE */
+            struct vnode *vn = of->vn;
+            of->vn = NULL;
+            vfs_close(vn);
+        }
+        of = NULL;
+        lock_release(of->lock);
+    }
+
+    /* INCREMENTIG COUNTING REFERENCES */
+    of = curproc->fileTable[oldfd];
+    lock_acquire(of->lock);
+    of->count_refs++;
+    lock_release(of->lock);
+
+    /* ASSIGNING TO NEW FILE DESCRIPTOR */
+    curproc->fileTable[newfd] = of;     // i.e.     curproc->fileTable[newfd] = curproc->fileTable[oldfd];
+
+    /* TASK COMPLETED SUCCESSFULLY */
+    *retval = newfd;
     return 0;
 }
 #endif
