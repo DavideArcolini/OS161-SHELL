@@ -358,3 +358,53 @@ int sys_remove_SHELL(const char *pathname) {
     return 0;
 }
 #endif
+
+/**
+ * @brief The current directory of the current process is set to the directory named by pathname. 
+ * 
+ * @param pathname directory to be set as current.
+ * @return zero on success, an error value in case of failure.
+ */
+#if OPT_SHELL
+int sys_chdir_SHELL(const char *pathname) {
+
+    /* SOME ASSERTIONS */
+    KASSERT(curthread != NULL);
+    KASSERT(curthread->t_proc != NULL);
+
+    /* COPYING PATHNAME FROM USERLAND TO KERNEL LAND */
+    // 1) security reason
+    // 2) pathname may be corrupted by vfs utilities
+    char *kbuffer = (char *) kmalloc(PATH_MAX * sizeof(char));
+    if (kbuffer == NULL) {
+        return ENOMEM;
+    }
+    int err = copyinstr((const_userptr_t) pathname, kbuffer, sizeof(kbuffer), NULL);
+    if (err) {
+        kfree(kbuffer);
+        return err;     // may return EFAULT, ENAMETOOLONG
+    }
+
+    /* OPEN DIRECTORY POINTED BY PATHANME */
+    struct vnode *vn = NULL;
+    err = vfs_open(kbuffer, O_RDONLY, 0644, &vn);
+    if (err) {
+        kfree(kbuffer);
+        return err; // may return EINVAL, ENOENT
+    }
+    kfree(kbuffer);
+
+    /* CHANGE CURRENT DIRECTORY WITH VFS UTILITY */
+    err = vfs_setcurdir(vn);
+    if (err) {
+        vfs_close(vn);
+        return err;
+    }
+
+    /* CLOSING VNODE */
+    vfs_close(vn);
+
+    /* TASK COMPLETED SUCCESSFULLY */
+    return 0;
+}
+#endif

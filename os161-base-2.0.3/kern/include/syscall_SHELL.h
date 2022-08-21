@@ -110,6 +110,29 @@ int sys_remove_SHELL(const char *pathname);
 #endif
 
 /**
+ * @brief The current directory of the current process is set to the directory named by pathname. 
+ * 
+ * @param pathname directory to be set as current.
+ * @return zero on success, an error value in case of failure.
+ */
+#if OPT_SHELL
+int sys_chdir_SHELL(const char *pathname);
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
  * @brief Retrieve the PID of the current process
  * 
  * @param retval PID of the current process

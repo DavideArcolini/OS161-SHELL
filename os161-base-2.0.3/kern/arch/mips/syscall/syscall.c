@@ -158,6 +158,13 @@ syscall(struct trapframe *tf)
 			);
 		break;
 
+		/* chdir() SYSTEM CALL */
+		case SYS_chdir:
+			err = sys_chdir_SHELL(
+				(char *) tf->tf_a0
+			);
+		break;
+
 		/* getpid() SYSTEM CALL */
 		case SYS_getpid:
 			err = sys_getpid_SHELL(
