@@ -165,6 +165,16 @@ syscall(struct trapframe *tf)
 			);
 		break;
 
+		/* lseek() SYSTEM CALL */
+		case SYS_lseek:
+			err = sys_lseek_SHELL(
+				(int) tf->tf_a0,
+				(off_t) tf->tf_a1,
+				(int32_t) tf->tf_a3,
+				&retval
+			);
+		break;
+
 		/* dup2() SYSTEM CALL */
 		case SYS_dup2:
 			err = sys_dup2_SHELL(

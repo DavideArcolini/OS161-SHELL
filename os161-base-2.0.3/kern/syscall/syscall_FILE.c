@@ -22,12 +22,14 @@
 #include <synch.h>
 #include <kern/errno.h>
 #include <kern/fcntl.h>
+#include <kern/stat.h>
 #include <copyinout.h>
 #include <limits.h>
 #include <kern/unistd.h>
 #include <endian.h>
 #include <stat.h>
 #include <lib.h>
+#include <kern/seek.h>
 #include "syscall_SHELL.h"
 
 #define SYSTEM_OPEN_MAX (10*OPEN_MAX)
@@ -452,6 +454,76 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval) {
     return 0;
 }
 #endif
+
+
+/**
+ * @brief Alters the current seek position of the file handle fd, seeking to a new position based on pos and whence. 
+ * 
+ *         If whence is
+ * 
+ *                  SEEK_SET, the new position is pos.
+ *                  SEEK_CUR, the new position is the current position plus pos.
+ *                  SEEK_END, the new position is the position of end-of-file plus pos.
+ *                  anything else, lseek fails. 
+ * 
+ * @param fd file handle
+ * @param pos signed quantity indicating the offset to add
+ * @param whence flag indicating the operation to perform
+ * @param retval new seek position of the file
+ * @return zero on success, and error value in case of failure
+ */
+#if OPT_SHELL
+int sys_lseek_SHELL(int fd, off_t pos, int32_t whence, int32_t *retval) {
+
+    /* SOME ASSERTIONS */
+    KASSERT(curproc != NULL);
+
+    /* CHECKING INPUT ARGUMENTS */
+    if (fd < 0 || fd >= OPEN_MAX) {
+        return EBADF;   // invalid file handler
+    } else if (curproc->fileTable[fd] == NULL) {
+        return EBADF;   // invalid file handler
+    }
+
+    /* SETTING RETURN VALUE BASED ON WHENCE */
+    struct openfile *of = curproc->fileTable[fd];
+    int err;
+    struct stat info;
+    lock_acquire(of->lock);
+    switch (whence) {
+        case SEEK_SET:
+            *retval = pos;
+        break;
+
+        case SEEK_CUR:
+            *retval = of->offset + pos;
+        break;
+        
+        case SEEK_END:
+            err = VOP_STAT(of->vn, &info);
+            if (err) {
+                lock_release(of->lock);
+                return err;
+            }
+            *retval = info.st_size - pos;
+        break;
+
+        default:
+            lock_release(of->lock);
+            return EINVAL;
+    }
+
+    /* TODO: MAYBE TRY TO SEEK THE NEW CURRENT POSITION AND CHECK IF IT WORKS */
+
+    /* UPDATING FILE */
+    of->offset = *retval;
+    lock_release(of->lock);
+
+    /* TASK COMPLETED SUCCESSFULLY */
+    return 0;
+}
+#endif
+
 
 /**
  * @brief dup2 clones the file handle oldfd onto the file handle newfd. If newfd names an open file, 

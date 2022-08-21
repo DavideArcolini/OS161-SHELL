@@ -133,6 +133,26 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval);
 #endif
 
 /**
+ * @brief Alters the current seek position of the file handle fd, seeking to a new position based on pos and whence. 
+ * 
+ *         If whence is
+ * 
+ *                  SEEK_SET, the new position is pos.
+ *                  SEEK_CUR, the new position is the current position plus pos.
+ *                  SEEK_END, the new position is the position of end-of-file plus pos.
+ *                  anything else, lseek fails. 
+ * 
+ * @param fd file handle
+ * @param pos signed quantity indicating the offset to add
+ * @param whence flag indicating the operation to perform
+ * @param retval new seek position of the file
+ * @return zero on success, and error value in case of failure
+ */
+#if OPT_SHELL
+int sys_lseek_SHELL(int fd, off_t pos, int32_t whence, int32_t *retval);
+#endif
+
+/**
  * @brief dup2 clones the file handle oldfd onto the file handle newfd. If newfd names an open file, 
  *        that file is closed. 
  * 
@@ -144,6 +164,8 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval);
 #if OPT_SHELL
 int sys_dup2_SHELL(int oldfd, int newfd, int32_t *retval);
 #endif
+
+
 
 
 
