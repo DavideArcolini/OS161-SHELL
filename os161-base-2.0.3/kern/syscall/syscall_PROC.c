@@ -70,7 +70,7 @@ int sys_waitpid_SHELL(pid_t pid, int *status, int options, int32_t *retval) {
     /* CHECKING ARGUMENTS */
     if (pid == curproc->p_pid) {
         return ECHILD;
-    } else if (options != WNOHANG) {
+    } else if (options == WNOHANG) {
         *status = 0;
         *retval = pid;
         return 0;
