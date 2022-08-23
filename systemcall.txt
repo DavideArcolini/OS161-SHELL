@@ -1,0 +1,25 @@
+open --> fallisce quando passi un pathname che punta ad una zona di memoria non valida.
+
+read --> 
+
+write --> WORKS!
+
+lseek --> credo fallisca per colpa della open (apre con successo un device che non dovrebbe essere aperto)
+
+close --> WORKS!
+
+dup2 --> fallisce per colpa di lseek
+
+chdir --> WORKS!
+
+__getcwd --> WORKS!
+
+getpid --> non c'è
+
+fork --> non c'è
+
+execv --> fallisce quando argv è NULL (exec with invalid pointer arglist) --> bisogna capire quale è l'errore giusto da ritornare (ora ritorna EFAULT)
+
+waitpid -->
+
+_exit --> non c'è

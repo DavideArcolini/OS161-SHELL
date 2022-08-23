@@ -198,6 +198,11 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
 #if OPT_SHELL
 int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retval) {
 
+    /* CHECKING INPUT ARGUMENTS */
+    if (pathname == NULL || strcmp((char *) pathname, "") == 0) {
+        return EFAULT;
+    }
+
     /* COPYING PATHNAME TO KERNEL SIDE */
     // this is done for two reasons:
     // 1) security reason
@@ -472,7 +477,7 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval) {
  * @return zero on success, and error value in case of failure
  */
 #if OPT_SHELL
-int sys_lseek_SHELL(int fd, off_t pos, int32_t whence, int32_t *retval) {
+int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval) {
 
     /* SOME ASSERTIONS */
     KASSERT(curproc != NULL);
@@ -480,6 +485,8 @@ int sys_lseek_SHELL(int fd, off_t pos, int32_t whence, int32_t *retval) {
     /* CHECKING INPUT ARGUMENTS */
     if (fd < 0 || fd >= OPEN_MAX) {
         return EBADF;   // invalid file handler
+    } else if (fd >= 0 && fd <= 2) {
+        return ESPIPE;  // device file handler
     } else if (curproc->fileTable[fd] == NULL) {
         return EBADF;   // invalid file handler
     }
@@ -547,7 +554,8 @@ int sys_dup2_SHELL(int oldfd, int newfd, int32_t *retval) {
     } else if (curproc->fileTable[oldfd] == NULL) {
         return EBADF;   // invalid file handler
     } else if (oldfd == newfd) {
-        return 0;       // using dup2 to clone a file handle onto itself has no effect
+        *retval = newfd;
+        return 0;           // using dup2 to clone a file handle onto itself has no effect
     } 
 
     /* CHECKING WHETHER newfd REFERS TO AN OPEN FILE */

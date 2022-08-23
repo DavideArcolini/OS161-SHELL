@@ -149,7 +149,7 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval);
  * @return zero on success, and error value in case of failure
  */
 #if OPT_SHELL
-int sys_lseek_SHELL(int fd, off_t pos, int32_t whence, int32_t *retval);
+int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval);
 #endif
 
 /**

@@ -169,9 +169,9 @@ syscall(struct trapframe *tf)
 		case SYS_lseek:
 			err = sys_lseek_SHELL(
 				(int) tf->tf_a0,
-				(off_t) tf->tf_a1,
-				(int32_t) tf->tf_a3,
-				&retval
+				(off_t) tf->tf_a2,
+				(int) tf->tf_a3,
+				(int32_t *) &retval
 			);
 		break;
 

@@ -183,7 +183,6 @@ struct proc *proc_search(pid_t pid) {
 
 	/* CHECKING PID CONSTRAINTS */
 	if (pid <= 0 || pid > PROC_MAX) {
-		kprintf("[ERROR] invalid pid\n");
 		return NULL;
 	}
 

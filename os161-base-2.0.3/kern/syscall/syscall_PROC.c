@@ -230,6 +230,8 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     /* CHECKING INPUT ARGUMENTS */
     if (pathname == NULL) {
         return EFAULT;      // One of the args is an invalid pointer.
+    } else if (argv == NULL) {
+        return EFAULT;
     }
 
     /* COPYING PATHNAME FROM USER LAND TO KERNEL LAND */
@@ -251,6 +253,11 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     if (args >= ARG_MAX) {
         kfree(kpathname);
         return E2BIG;       // too many arguments
+    }
+    for (int i = 0; i < args-1; i++) {
+        if (argv[i] == NULL) {
+            return EFAULT;
+        }
     }
 
     /* COPYING ARGUMENTS FROM USER LAND TO KERNEL LAND */
