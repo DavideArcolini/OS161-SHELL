@@ -145,11 +145,12 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval);
  * @param fd file handle
  * @param pos signed quantity indicating the offset to add
  * @param whence flag indicating the operation to perform
- * @param retval new seek position of the file
+ * @param retval_low32 new seek position of the file (lower bytes)
+ * @param retval_upp32 new seek position of the file (upper bytes)
  * @return zero on success, and error value in case of failure
  */
 #if OPT_SHELL
-int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval);
+int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval_low32, int32_t *retval_upp32);
 #endif
 
 /**

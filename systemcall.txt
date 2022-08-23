@@ -1,14 +1,14 @@
-open --> fallisce quando passi un pathname che punta ad una zona di memoria non valida.
+open --> WORKS!
 
-read --> temporary fixed (fallisce quando *buf punta ad una zona di memoria non valida)
+read --> WORKS!
 
 write --> WORKS!
 
-lseek --> credo fallisca per colpa della open (apre con successo un device che non dovrebbe essere aperto)
+lseek --> WORKS!
 
 close --> WORKS!
 
-dup2 --> fallisce per colpa di lseek
+dup2 --> WORKS!
 
 chdir --> WORKS!
 
@@ -20,6 +20,6 @@ fork --> non c'è
 
 execv --> fallisce quando argv è NULL (exec with invalid pointer arglist) --> bisogna capire quale è l'errore giusto da ritornare (ora ritorna EFAULT)
 
-waitpid -->
+waitpid --> implementare controllo su *status (che non sia NULL, che sia un puntatore a zona di memoria valido) + implementare options + implementare parent
 
 _exit --> non c'è

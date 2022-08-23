@@ -66,9 +66,6 @@ ssize_t sys_write_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval)
     }
 
     /* COPYING BUFFER TO KERNEL SIDE (copyin()) */
-    // NB: we are implementing the system call in such a way that it will use a kernel buffer;
-    //     this is not strictly necessary, but by doing so, it will exploit the already implemented
-    //     uio_kinit() function without the need to properly initialize the uio struct.
     char *kbuffer = (char *) kmalloc(buflen * sizeof(char));
     if (kbuffer == NULL) {
         return ENOMEM;
@@ -129,12 +126,10 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
         return EBADF;
     } else if (buf == NULL) {
         return EFAULT;
-    } else if ((int) buf == 0x40000000 || (unsigned int) buf == (unsigned int)0x80000000) {
-        return EFAULT;  // temporary
-    }
+    } 
 
     /* PREPARING KERNEL BUFFER */
-    char *kbuffer = (char *) kmalloc(buflen * sizeof(char));
+    char *kbuffer = (char *) kmalloc((buflen+1) * sizeof(char));
     if (kbuffer == NULL) {
         return ENOMEM;
     }
@@ -149,6 +144,7 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
     int err = VOP_READ(vn, &kuio);
     if (err) {
         kfree(kbuffer);
+        lock_release(of->lock);
         return err;
     }
 
@@ -157,10 +153,10 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
     *retval = buflen - kuio.uio_resid;
 
     /* COPYING BUFFER TO USER SIDE (COPYOUT()) */
-    // NB: we are implementing the system call in such a way that it will use a kernel buffer;
-    //     this is not strictly necessary, but it will be a choice of design
-    if (copyout(kbuffer, (userptr_t) buf, *retval)) {
+    err = copyout(kbuffer, (userptr_t) buf, *retval);
+    if (err) {
         kfree(kbuffer);
+        lock_release(of->lock);
         return EFAULT;
     }
 
@@ -203,17 +199,15 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
 int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retval) {
 
     /* CHECKING INPUT ARGUMENTS */
-    if (pathname == NULL || strcmp((char *) pathname, "") == 0) {
+    if (pathname == NULL) {
         return EFAULT;
-    } else if ((int) pathname == 0x40000000) {
-        return EFAULT; // temporary
     }
 
     /* COPYING PATHNAME TO KERNEL SIDE */
     // this is done for two reasons:
     // 1) security reason
     // 2) vfs_open may destroy the buffer
-    char *kbuffer = (char *) kmalloc(strlen((const char *) pathname) * sizeof(char));
+    char *kbuffer = (char *) kmalloc(PATH_MAX * sizeof(char));
     if (kbuffer == NULL) {
         return ENOMEM;
     }
@@ -221,7 +215,7 @@ int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retv
     int err = copyinstr((const_userptr_t) pathname, kbuffer, PATH_MAX, &len); // may return EFAULT
     if (err) {
         kfree(kbuffer);
-        return err;
+        return EFAULT;
     }
 
     /* OPENING WITH VFS UTILITY */
@@ -479,11 +473,14 @@ int sys_getcwd_SHELL(const char *buf, size_t buflen, int32_t *retval) {
  * @param fd file handle
  * @param pos signed quantity indicating the offset to add
  * @param whence flag indicating the operation to perform
- * @param retval new seek position of the file
+ * @param retval_low32 new seek position of the file (lower bytes)
+ * @param retval_upp32 new seek position of the file (upper bytes)
  * @return zero on success, and error value in case of failure
  */
 #if OPT_SHELL
-int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval) {
+int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval_low32, int32_t *retval_upp32) {
+
+    off_t retval = -1;
 
     /* SOME ASSERTIONS */
     KASSERT(curproc != NULL);
@@ -491,10 +488,13 @@ int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval) {
     /* CHECKING INPUT ARGUMENTS */
     if (fd < 0 || fd >= OPEN_MAX) {
         return EBADF;   // invalid file handler
-    } else if (fd >= 0 && fd <= 2) {
-        return ESPIPE;  // device file handler
     } else if (curproc->fileTable[fd] == NULL) {
         return EBADF;   // invalid file handler
+    }
+
+    /* CHECKING FILE */
+    if (!VOP_ISSEEKABLE(curproc->fileTable[fd]->vn)) {
+        return ESPIPE;  // fd refers to an object which does not support seeking.
     }
 
     /* SETTING RETURN VALUE BASED ON WHENCE */
@@ -502,13 +502,22 @@ int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval) {
     int err;
     struct stat info;
     lock_acquire(of->lock);
+    retval = of->offset;
     switch (whence) {
         case SEEK_SET:
-            *retval = pos;
+            if (pos < 0) {
+                lock_release(of->lock);
+                return EINVAL;
+            }
+            retval = pos;
         break;
 
         case SEEK_CUR:
-            *retval = of->offset + pos;
+            if (pos < 0 && -pos > of->offset) {
+                lock_release(of->lock);
+                return EINVAL;
+            }
+            retval = of->offset + pos;
         break;
         
         case SEEK_END:
@@ -517,7 +526,11 @@ int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval) {
                 lock_release(of->lock);
                 return err;
             }
-            *retval = info.st_size - pos;
+            if (pos < 0 && -pos > info.st_size) {
+                lock_release(of->lock);
+                return EINVAL;
+            }
+            retval = info.st_size - pos;
         break;
 
         default:
@@ -528,8 +541,12 @@ int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval) {
     /* TODO: MAYBE TRY TO SEEK THE NEW CURRENT POSITION AND CHECK IF IT WORKS */
 
     /* UPDATING FILE */
-    of->offset = *retval;
+    of->offset = retval;
     lock_release(of->lock);
+
+    /* SPLIT 64BIT RESULT INTO 32 BIT NUMBERS */
+    *retval_low32 = (int32_t) (retval >> 32);                   /* most significant bits */
+    *retval_upp32 = (int32_t) (retval & 0x00000000ffffffff);    /* least significant bits */
 
     /* TASK COMPLETED SUCCESSFULLY */
     return 0;
@@ -578,8 +595,8 @@ int sys_dup2_SHELL(int oldfd, int newfd, int32_t *retval) {
             of->vn = NULL;
             vfs_close(vn);
         }
-        of = NULL;
         lock_release(of->lock);
+        of = NULL;
     }
 
     /* INCREMENTIG COUNTING REFERENCES */

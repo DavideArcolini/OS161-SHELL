@@ -67,15 +67,36 @@ int sys_getpid_SHELL(pid_t *retval) {
 #if OPT_SHELL
 int sys_waitpid_SHELL(pid_t pid, int *status, int options, int32_t *retval) {
 
+    /* SOME ASSERTIONS */
+    KASSERT(curproc != NULL);
+
     /* CHECKING ARGUMENTS */
     if (pid == curproc->p_pid) {
         return ECHILD;
-    } else if (options == WNOHANG) {
-        *status = 0;
+    } else if (status == NULL) {
         *retval = pid;
         return 0;
-    } else if (status == NULL) {
+    } 
+    /* TEMPORARY */
+    else if ((int) status == 0x40000000 || (unsigned int) status == (unsigned int) 0x80000000) {
         return EFAULT;
+    } else if ((int) status % 4 != 0) {
+        return EFAULT;
+    }
+
+    /* OPTIONS */
+    switch (options) {
+        case 0:
+        break;
+        
+        case WNOHANG:
+            *status = 0;
+            *retval = pid;
+            return 0;
+        break;
+
+        default:
+            return EINVAL;
     }
 
     /* RETRIEVING PROCESS */

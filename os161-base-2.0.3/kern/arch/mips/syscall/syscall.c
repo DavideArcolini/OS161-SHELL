@@ -83,7 +83,8 @@ void
 syscall(struct trapframe *tf)
 {
 	int callno;
-	int32_t retval;
+	int32_t retval_low32, retval_upp32;
+	off_t pos;
 	int err;
 
 	KASSERT(curthread != NULL);
@@ -101,7 +102,8 @@ syscall(struct trapframe *tf)
 	 * like write.
 	 */
 
-	retval = 0;
+	retval_low32 = 0;
+	retval_upp32 = 0;
 
 	switch (callno) {
 	    case SYS_reboot:
@@ -120,7 +122,7 @@ syscall(struct trapframe *tf)
 				(int) tf->tf_a0, 
 				(void *) tf->tf_a1, 
 				(size_t) tf->tf_a2, 
-				&retval
+				&retval_low32
 			);
 		break;
 
@@ -130,7 +132,7 @@ syscall(struct trapframe *tf)
 				(int) tf->tf_a0, 
 				(void *) tf->tf_a1, 
 				(size_t) tf->tf_a2, 
-				&retval
+				&retval_low32
 			);
 		break;
 
@@ -140,7 +142,7 @@ syscall(struct trapframe *tf)
 				(userptr_t) tf->tf_a0, 
 				(int) tf->tf_a1, 
 				(mode_t) tf->tf_a2, 
-				&retval
+				&retval_low32
 			);
 		break;
 
@@ -167,11 +169,15 @@ syscall(struct trapframe *tf)
 
 		/* lseek() SYSTEM CALL */
 		case SYS_lseek:
+			pos = tf->tf_a2;
+			pos <<= 32;
+			pos |= tf->tf_a3;
 			err = sys_lseek_SHELL(
-				(int) tf->tf_a0,
-				(off_t) tf->tf_a2,
-				(int) tf->tf_a3,
-				(int32_t *) &retval
+				(int) tf->tf_a0,	/* file descriptor fd */
+				pos,	/* pos */
+				*(int32_t *)(tf->tf_sp+16),
+				(int32_t *) &retval_low32,
+				(int32_t *) &retval_upp32
 			);
 		break;
 
@@ -180,7 +186,7 @@ syscall(struct trapframe *tf)
 			err = sys_dup2_SHELL(
 				(int) tf->tf_a0,
 				(int) tf->tf_a1,
-				&retval
+				&retval_low32
 			);
 		break;
 
@@ -189,14 +195,14 @@ syscall(struct trapframe *tf)
 			err = sys_getcwd_SHELL(
 				(char *) tf->tf_a0,
 				(size_t) tf->tf_a1,
-				&retval
+				&retval_low32
 			);
 		break;
 
 		/* getpid() SYSTEM CALL */
 		case SYS_getpid:
 			err = sys_getpid_SHELL(
-				(pid_t *) &retval
+				(pid_t *) &retval_low32
 			);
 		break;
 
@@ -206,7 +212,7 @@ syscall(struct trapframe *tf)
 				(pid_t) tf->tf_a0,
 				(int *) tf->tf_a1,
 				(int) tf->tf_a2,
-				(pid_t *) &retval
+				(pid_t *) &retval_low32
 			);
 		break;
 
@@ -222,7 +228,7 @@ syscall(struct trapframe *tf)
 		case SYS_fork:
 			err = sys_fork_SHELL(
 				tf, 
-				(pid_t *) &retval
+				(pid_t *) &retval_low32
 			);
 		break;
 
@@ -253,7 +259,8 @@ syscall(struct trapframe *tf)
 	}
 	else {
 		/* Success. */
-		tf->tf_v0 = retval;
+		tf->tf_v0 = retval_low32;
+		tf->tf_v1 = retval_upp32;
 		tf->tf_a3 = 0;      /* signal no error */
 	}
 
