@@ -127,6 +127,10 @@ ssize_t sys_read_SHELL(int fd, const void *buf, size_t buflen, int32_t *retval) 
         return EBADF;
     } else if (curproc->fileTable[fd]->mode_open == O_WRONLY) {     /* fd should refer to a file allowed to be read         */
         return EBADF;
+    } else if (buf == NULL) {
+        return EFAULT;
+    } else if ((int) buf == 0x40000000 || (unsigned int) buf == (unsigned int)0x80000000) {
+        return EFAULT;  // temporary
     }
 
     /* PREPARING KERNEL BUFFER */
@@ -201,6 +205,8 @@ int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retv
     /* CHECKING INPUT ARGUMENTS */
     if (pathname == NULL || strcmp((char *) pathname, "") == 0) {
         return EFAULT;
+    } else if ((int) pathname == 0x40000000) {
+        return EFAULT; // temporary
     }
 
     /* COPYING PATHNAME TO KERNEL SIDE */

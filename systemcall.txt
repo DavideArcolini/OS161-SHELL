@@ -1,6 +1,6 @@
 open --> fallisce quando passi un pathname che punta ad una zona di memoria non valida.
 
-read --> 
+read --> temporary fixed (fallisce quando *buf punta ad una zona di memoria non valida)
 
 write --> WORKS!
 
