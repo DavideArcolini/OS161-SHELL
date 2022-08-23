@@ -207,7 +207,7 @@ int sys_getpid_SHELL(pid_t *retval);
  * @return zero on success, an error value in case of failure.
  */
 #if OPT_SHELL
-int sys_waitpid_SHELL(pid_t pid, int *status, int options);
+int sys_waitpid_SHELL(pid_t pid, int *status, int options, int32_t *retval);
 #endif
 
 /**

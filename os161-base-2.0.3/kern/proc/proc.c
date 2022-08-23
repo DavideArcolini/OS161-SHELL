@@ -224,7 +224,7 @@ static int console_init(const char *lock_name, struct proc *proc, int fd, int fl
 	}
 
 	/* OPENING ASSOCIATED FILE */
-	int err = vfs_open(con, O_RDONLY, 0, &proc->fileTable[fd]->vn);
+	int err = vfs_open(con, flag, 0644, &proc->fileTable[fd]->vn);
 	if (err) {
 		kfree(con);
 		kfree(proc->fileTable[fd]);
@@ -371,7 +371,7 @@ proc_create(const char *name)
 		return NULL;
 	}
 
-	kprintf("[DEBUG] process created with PID: %d.\n", proc->p_pid);
+	//kprintf("[DEBUG] process created with PID: %d.\n", proc->p_pid);
 #endif
 
 	return proc;

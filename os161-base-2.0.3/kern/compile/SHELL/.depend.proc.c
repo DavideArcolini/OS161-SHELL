@@ -4,11 +4,12 @@ proc.o: ../../proc/proc.c ../../include/types.h \
  ../../include/proc.h ../../include/spinlock.h ../../include/hangman.h \
  opt-hangman.h includelinks/machine/spinlock.h \
  ../../include/syscall_SHELL.h ../../include/lib.h opt-noasserts.h \
- opt-shell.h ../../include/limits.h ../../include/kern/limits.h \
- ../../include/current.h includelinks/machine/current.h \
- ../../include/thread.h ../../include/array.h ../../include/threadlist.h \
+ includelinks/mips/trapframe.h opt-shell.h ../../include/limits.h \
+ ../../include/kern/limits.h ../../include/current.h \
+ includelinks/machine/current.h ../../include/thread.h \
+ ../../include/array.h ../../include/threadlist.h \
  includelinks/machine/thread.h ../../include/setjmp.h \
  includelinks/kern/machine/setjmp.h ../../include/addrspace.h \
  ../../include/vm.h includelinks/machine/vm.h opt-dumbvm.h \
- ../../include/vnode.h ../../include/synch.h ../../include/kern/fcntl.h \
- ../../include/vfs.h ../../include/syscall_SHELL.h
+ ../../include/vnode.h ../../include/syscall.h ../../include/synch.h \
+ ../../include/kern/fcntl.h ../../include/vfs.h

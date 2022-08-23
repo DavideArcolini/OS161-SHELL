@@ -133,7 +133,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	/*
 	 * Write this.
 	 */
-	kprintf("[DEBUG] Gotcha\n");
 
 	(void)as;
 	(void)vaddr;

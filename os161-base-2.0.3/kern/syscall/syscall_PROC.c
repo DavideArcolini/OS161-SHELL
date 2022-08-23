@@ -65,25 +65,30 @@ int sys_getpid_SHELL(pid_t *retval) {
  * @return zero on success, an error value in case of failure.
  */
 #if OPT_SHELL
-int sys_waitpid_SHELL(pid_t pid, int *status, int options) {
+int sys_waitpid_SHELL(pid_t pid, int *status, int options, int32_t *retval) {
 
-    /* CHECKING PID */
+    /* CHECKING ARGUMENTS */
     if (pid == curproc->p_pid) {
-        kprintf("[ERROR] this process is attempting to wait for itself\n");
         return ECHILD;
-    }
-
-    /* CHECKING OPTIONS */
-    if (options != 0) {
-        kprintf("[ERROR] invalid options parameter\n");
-        return EINVAL;
+    } else if (options != WNOHANG) {
+        *status = 0;
+        *retval = pid;
+        return 0;
+    } else if (status == NULL) {
+        return EFAULT;
     }
 
     /* RETRIEVING PROCESS */
     struct proc *proc = proc_search(pid);
     if (proc == NULL) {
-        kprintf("[ERROR] process not found\n");
         return ESRCH;
+    }
+
+    if (proc->p_numthreads == 0) {
+        *status = proc->p_status;
+        *retval = proc->p_pid;
+        proc_destroy(proc);
+        return 0;
     }
 
     /* WAITING TERMINATION OF THE PROCESS */
@@ -93,6 +98,7 @@ int sys_waitpid_SHELL(pid_t pid, int *status, int options) {
 
     /* ASSIGNING RETURN STATUS */
     *status = proc->p_status;
+    *retval = proc->p_pid;
     if (status == NULL) {
         return EFAULT;
     }
@@ -179,7 +185,7 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
         proc_destroy(newproc);
         return ENOMEM; 
     }
-    memcpy(tf_child, ctf, sizeof(struct trapframe));
+    memmove(tf_child, ctf, sizeof(struct trapframe));
 
     /* TO BE DONE: linking parent/child, so that child terminated on parent exit */
 
@@ -199,14 +205,13 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
     );
 
     if (err) {
-        proc_remove((pid_t) index);
         proc_destroy(newproc);
         kfree(tf_child);
         return err;
     }
 
     /* TASK COMPLETED SUCCESSFULLY */
-    *retval = newproc->p_pid;
+    *retval = newproc->p_pid;      // parent return pid of child
     return 0;
 }
 #endif
@@ -243,6 +248,10 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     /* COUNTING NUMBER OF ARGUMENTS */
     int args;
     for (args = 0; argv[args]; args++);
+    if (args >= ARG_MAX) {
+        kfree(kpathname);
+        return E2BIG;       // too many arguments
+    }
 
     /* COPYING ARGUMENTS FROM USER LAND TO KERNEL LAND */
     char **kargv = (char **) kmalloc(args * sizeof(char *));
@@ -332,8 +341,36 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
 
 
     /* COPYING BACK ARGS FROM KERNEL LAND TO USER LAND */
-    // TODO
-    // NB: pay attention to the padding (either done here or when copying from user to kernel)
+    size_t arg_length = 0;
+    size_t pad_length = 0;
+    vaddr_t copy_addr = stackptr;
+    for (int i = 0; i < args; i++) {
+
+        /* RETRIEVING LENGTH AND PADDING */
+        arg_length = strlen(kargv[i]) + 1;                              // +1 due to \0 at the end which need to be added
+        pad_length = (arg_length % 4 == 0) ? 0 : 4 - (arg_length % 4);  // test
+
+        /* COMPUTING ADDRESS FOR COPYING */
+        copy_addr -= arg_length;
+        copy_addr -= pad_length;
+
+        /* ACTUAL COPY OF THE ARGUMENT */
+        err = copyout(kargv[i], (userptr_t) copy_addr, arg_length);
+        if (err) {
+            for (int j = 0; j < args; j++) {
+                kfree(kargv[j]);
+            }
+            kfree(kpathname);
+            kfree(kargv);
+            return err;
+        }
+    }
+    // char *null_pointer = NULL;
+    // copy_addr -= 4;
+    // err = copyout(null_pointer, (userptr_t) copy_addr, 4);
+    // if (err) {
+    //     return err;
+    // }
 
     /* WRAP TO USER MODE */
     enter_new_process(

@@ -302,7 +302,6 @@ int sys_open_SHELL(userptr_t pathname, int openflags, mode_t mode, int32_t *retv
 
     /* TASK COMPLETED SUCCESSFULLY */
     *retval = fd;
-    kprintf("[DEBUG] fd is: %d\n", fd);
     return 0;
 }
 #endif

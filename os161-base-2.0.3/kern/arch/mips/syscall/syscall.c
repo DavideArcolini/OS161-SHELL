@@ -204,8 +204,9 @@ syscall(struct trapframe *tf)
 		case SYS_waitpid:
 			err = sys_waitpid_SHELL(
 				(pid_t) tf->tf_a0,
-				(int *) &retval,
-				(int) tf->tf_a1
+				(int *) tf->tf_a1,
+				(int) tf->tf_a2,
+				(pid_t *) &retval
 			);
 		break;
 
@@ -284,7 +285,6 @@ enter_forked_process(struct trapframe *tf)
 #if OPT_SHELL
 
 	struct trapframe forkedTf = *tf; // copy trap frame onto kernel stack
-	kfree(tf);
 
 	forkedTf.tf_v0 = 0; 	// return value is 0
     forkedTf.tf_a3 = 0; 	// return with success

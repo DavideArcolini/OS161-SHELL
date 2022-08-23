@@ -10,7 +10,7 @@ semfs_vnops.o: ../../fs/semfs/semfs_vnops.c ../../include/types.h \
  opt-noasserts.h ../../include/threadlist.h includelinks/machine/thread.h \
  ../../include/setjmp.h includelinks/kern/machine/setjmp.h \
  ../../include/proc.h ../../include/syscall_SHELL.h \
- ../../include/limits.h ../../include/kern/limits.h \
- ../../include/current.h includelinks/machine/current.h \
- ../../include/vfs.h ../../include/vnode.h ../../fs/semfs/semfs.h \
- ../../include/fs.h
+ includelinks/mips/trapframe.h ../../include/limits.h \
+ ../../include/kern/limits.h ../../include/current.h \
+ includelinks/machine/current.h ../../include/vfs.h ../../include/vnode.h \
+ ../../fs/semfs/semfs.h ../../include/fs.h

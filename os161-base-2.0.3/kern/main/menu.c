@@ -145,8 +145,9 @@ common_prog(int nargs, char **args)
 #if OPT_SHELL
 	pid_t pid = proc->p_pid;
 	int exitstatus;
+	pid_t returnpid;
 	kprintf("[!] %d is waiting for %d...\n", curproc->p_pid, pid);
-	int err = sys_waitpid_SHELL(pid, &exitstatus, 0);
+	int err = sys_waitpid_SHELL(pid, &exitstatus, 0, &returnpid);
 	if (err != 0) {
 		return err;
 	} else {
