@@ -47,6 +47,18 @@ struct addrspace;
 struct thread;
 struct vnode;
 
+/**
+ * @brief The child_list structure stores the pid of each children of a process and a 
+ * pointer to the next children
+ */
+#if OPT_SHELL
+struct child_list {
+	pid_t child_pid;				/* pid of the child							*/
+	struct child_list* next_child;	/* next_child						        */
+};
+#endif
+
+
 /*
  * Process structure.
  *
@@ -78,6 +90,8 @@ struct proc {
 #if OPT_SHELL
 	int p_status;				/* current process status 	*/
 	pid_t p_pid;				/* current process PID		*/
+	pid_t parent_pid;			/* parent process PID		*/
+	struct child_list* children_list;  /*list of children          */
 	struct cv *p_cv;			/* used for waitpid() syscall */
 	struct lock *p_locklock;	/* used for waitpid() syscall */
 
@@ -166,5 +180,54 @@ int proc_add(pid_t pid, struct proc *proc);
 #if OPT_SHELL
 void proc_remove(pid_t pid);
 #endif
+
+/**
+ * @brief Adds a new child to the child_list of a parent process
+ * 
+ * @param proc parent process.
+ * @param child_pid pid of the child process.
+ * 
+ * @return 0 on success, -1 in case of failure
+ */
+#if OPT_SHELL
+int add_new_child(struct proc* proc, pid_t child_pid);
+#endif
+
+/**
+ * @brief Destroys the child_list of a parent process which is being destroyed.
+ * Sets the childrens's parent pid to -1, the "root" process. 
+ * 
+ * @param proc parent process.
+ * 
+ * @return 0 on success, -1 in case of failure
+ */
+#if OPT_SHELL
+int destroy_child_list(struct proc* proc);
+#endif
+
+/**
+ * @brief Removes the child (which is being destroyed) from the child list of its parent process.
+ * 
+ * @param proc parent process.
+ * @param child_pid pid of the child process.
+ * 
+ * @return 0 on success, -1 in case of failure
+ */
+#if OPT_SHELL
+int remove_child_from_list(struct proc* proc, pid_t child_pid);
+#endif
+
+/**
+ * @brief Checks if the process with pid child_pid is a son of the parent process.
+ * 
+ * @param proc parent process.
+ * @param child_pid pid of the child process.
+ * 
+ * @return 0 on success, -1 in case of failure
+ */
+#if OPT_SHELL
+int is_child(struct proc* proc, pid_t child_pid);
+#endif 
+
 
 #endif /* _PROC_H_ */

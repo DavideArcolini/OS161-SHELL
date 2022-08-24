@@ -284,6 +284,13 @@ static int proc_init(struct proc *proc, const char *name) {
 	/* PROCESS STATUS INITIALIZATION */
 	proc->p_status = 0;
 
+	/*SETTING FATHER PID AS -1*/
+	/*FOR THE FIRST PROCESS IT WILL NOT BE CHANGED*/
+	proc->parent_pid=-1;
+
+	/*PROCESS CHILDREN LIST INITIALIZATION*/
+	proc->children_list= NULL;
+
 	/* PROCESS CV AND LOCK INITIALIZATION */
 	proc->p_cv = cv_create(name);
   	proc->p_locklock = lock_create(name);
@@ -304,6 +311,7 @@ static int proc_init(struct proc *proc, const char *name) {
  */
 static int proc_deinit(struct proc *proc) {
 #if OPT_SHELL
+	struct proc* parent_proc;
 	/* ACQUIRING THE SPINLOCK */
 	spinlock_acquire(&processTable.lk);
 
@@ -322,6 +330,22 @@ static int proc_deinit(struct proc *proc) {
 
 	/* RELEASING THE SPINLOCK */
 	spinlock_release(&processTable.lk);
+
+	/*DESTROYING THE CHILD LIST AND SETTING CHILDREN AS ORPHANS*/
+	if(destroy_child_list(proc)==-1)
+		return -1;
+	
+	/*REMOVING THE PROCESS FROM THE CHILD LIST OF ITS PARENT*/
+	if(proc->parent_pid!=-1){
+		parent_proc=proc_search(proc->parent_pid);
+		if(proc->parent_pid==kproc->p_pid)
+			parent_proc=kproc;			
+		if(parent_proc==NULL)
+			return -1;
+
+		if((remove_child_from_list(parent_proc, proc->p_pid)==-1))
+			return -1;
+	}
 
 	/* TASK COMPLETED SUCCESSFULLY */
 	return 0;
@@ -598,6 +622,8 @@ proc_remthread(struct thread *t)
 	splx(spl);
 }
 
+
+
 /*
  * Fetch the address space of (the current) process.
  *
@@ -640,3 +666,116 @@ proc_setas(struct addrspace *newas)
 	spinlock_release(&proc->p_lock);
 	return oldas;
 }
+
+
+/*
+ * Adds a new child to the children list. If It is not possible, it returns -1, otherwise 0.
+ */
+#if OPT_SHELL
+int add_new_child(struct proc* proc, pid_t child_pid){
+	struct child_list* app=proc->children_list;
+
+	if(proc->children_list==NULL){
+		proc->children_list=(struct child_list *) kmalloc(sizeof(struct child_list));
+		if(proc->children_list==NULL)
+			return -1;
+		proc->children_list->next_child=NULL;
+		proc->children_list->child_pid=child_pid;
+		return 0;
+	}
+		
+
+	while(app->next_child!=NULL){
+		app=app->next_child;
+	}
+
+	app->next_child=(struct child_list *) kmalloc(sizeof(struct child_list));
+	if(app->next_child==NULL)
+		return -1;
+	app->next_child->next_child=NULL;
+	app->next_child->child_pid=child_pid;
+	return 0;
+}
+#endif
+
+
+/*
+ * Destroys the child_list of a parent process which is being destroyed.
+ * Sets the childrens's parent pid to -1, the "root" process.
+ * If It is not possible, it returns -1, otherwise 0.
+ */
+#if OPT_SHELL
+int destroy_child_list(struct proc* proc){
+	struct child_list* app=proc->children_list;
+	struct proc* child_proc;
+
+
+	while(app!=NULL){
+		proc->children_list=app->next_child;
+
+		/*FINDING THE CHILD STRUCTURE*/
+		child_proc=proc_search(app->child_pid);
+		if(child_proc==NULL)
+			return -1;
+
+		/*SETTING THE PARENT PID AS -1*/	
+		child_proc->parent_pid=-1;
+
+		/*REMOVING THE CHILD*/
+		app->next_child=NULL;
+		kfree(app);
+
+		app=proc->children_list;
+	}
+	
+	return 0;
+}
+#endif
+
+/*
+ * Removes the child (which is being destroyed) from the child list of its parent process.
+ * If It is not possible, it returns -1, otherwise 0.
+ */
+#if OPT_SHELL
+int remove_child_from_list(struct proc* proc, pid_t child_pid){
+	struct child_list* app=proc->children_list;
+	struct child_list* prev_child=NULL;
+
+
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			if(prev_child==NULL)
+				proc->children_list=app->next_child;
+			else
+				prev_child->next_child=app->next_child;
+			kfree(app);
+			return 0;
+		}
+		prev_child=app;
+		app=app->next_child;
+	}
+	
+	return -1;
+}
+#endif
+
+
+/*
+ * Checks if the process with pid child_pid is a son of the parent process
+ * If It is not a child, it returns -1, otherwise 0.
+ */
+#if OPT_SHELL
+int is_child(struct proc* proc, pid_t child_pid){
+	struct child_list* app=proc->children_list;
+
+
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			return 0;
+		}
+		app=app->next_child;
+	}
+	
+	return -1;
+}
+#endif

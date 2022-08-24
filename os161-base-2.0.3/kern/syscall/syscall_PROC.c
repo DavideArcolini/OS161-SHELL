@@ -76,12 +76,16 @@ int sys_waitpid_SHELL(pid_t pid, int *status, int options, int32_t *retval) {
     } else if (status == NULL) {
         *retval = pid;
         return 0;
-    } 
+    }
     /* TEMPORARY */
     else if ((int) status == 0x40000000 || (unsigned int) status == (unsigned int) 0x80000000) {
         return EFAULT;
     } else if ((int) status % 4 != 0) {
         return EFAULT;
+    }
+    /*CHECKING IF TRYING TO WAIT FOR A NON-CHILD PROCESS*/
+    else if(is_child(curproc, pid)==-1){
+        return ECHILD;
     }
 
     /* OPTIONS */
@@ -209,6 +213,18 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
     memmove(tf_child, ctf, sizeof(struct trapframe));
 
     /* TO BE DONE: linking parent/child, so that child terminated on parent exit */
+    /*DEBUGGING PURPOSE*/
+    struct proc *father=curproc;
+
+    /*ADDING NEW CHILD TO FATHER*/
+    if(add_new_child(father, newproc->p_pid)==-1){
+        proc_destroy(newproc);
+        return ENOMEM; 
+    }
+
+
+    /*LINKING CHILD TO FATHER*/
+    newproc->parent_pid=father->p_pid;
 
     /* ADDING NEW PROCESS TO THE PROCESS TABLE */
     err = proc_add((pid_t) index, newproc);

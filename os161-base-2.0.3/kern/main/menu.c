@@ -132,6 +132,19 @@ common_prog(int nargs, char **args)
 		return ENOMEM;
 	}
 
+#if OPT_SHELL
+
+	/*ADDING NEW CHILD TO FATHER*/
+    if(add_new_child(curproc, proc->p_pid)==-1){
+        proc_destroy(proc);
+        return ENOMEM; 
+    }
+
+
+    /*LINKING CHILD TO FATHER*/
+    proc->parent_pid=curproc->p_pid;
+#endif
+
 	result = thread_fork(args[0] /* thread name */,
 			proc /* new process */,
 			cmd_progthread /* thread function */,

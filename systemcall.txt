@@ -20,6 +20,6 @@ fork --> non c'è
 
 execv --> fallisce quando argv è NULL (exec with invalid pointer arglist) --> bisogna capire quale è l'errore giusto da ritornare (ora ritorna EFAULT)
 
-waitpid --> implementare controllo su *status (che non sia NULL, che sia un puntatore a zona di memoria valido) + implementare options + implementare parent
+waitpid -->  WORKS (?) implementare controllo su *status (che non sia NULL, che sia un puntatore a zona di memoria valido) + implementare options + implementare parent
 
 _exit --> non c'è
