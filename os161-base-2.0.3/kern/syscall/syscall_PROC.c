@@ -212,7 +212,6 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
     }
     memmove(tf_child, ctf, sizeof(struct trapframe));
 
-    /* TO BE DONE: linking parent/child, so that child terminated on parent exit */
     /*DEBUGGING PURPOSE*/
     struct proc *father=curproc;
 
@@ -264,10 +263,13 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
 #if OPT_SHELL
 int sys_execv_SHELL(const char *pathname, char *argv[]) {
 
+    /* SOME ASSERTIONS */
+    KASSERT(curproc != NULL);
+
     /* CHECKING INPUT ARGUMENTS */
     if (pathname == NULL) {
-        return EFAULT;      // One of the args is an invalid pointer.
-    } else if (argv == NULL) {
+        return EFAULT;      // One of the kargc is an invalid pointer.
+    } else if (argv == NULL || (int) argv == 0x40000000 || (unsigned int) argv == (unsigned int) 0x80000000) {
         return EFAULT;
     }
 
@@ -285,25 +287,26 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     }
 
     /* COUNTING NUMBER OF ARGUMENTS */
-    int args;
-    for (args = 0; argv[args]; args++);
-    if (args >= ARG_MAX) {
+    int kargc;
+    for (kargc = 0; argv[kargc]; kargc++);
+    if (kargc >= ARG_MAX) {
         kfree(kpathname);
         return E2BIG;       // too many arguments
     }
-    for (int i = 0; i < args-1; i++) {
-        if (argv[i] == NULL) {
+    for (int i = 1; i < kargc; i++) {
+        if (argv[i] == NULL || (int) argv[i] == 0x40000000 || (unsigned int) argv[i] == (unsigned int) 0x80000000) {
             return EFAULT;
         }
     }
 
+
     /* COPYING ARGUMENTS FROM USER LAND TO KERNEL LAND */
-    char **kargv = (char **) kmalloc(args * sizeof(char *));
+    char **kargv = (char **) kmalloc(kargc * sizeof(char *));
     if (kargv == NULL) {
         kfree(kpathname);
         return ENOMEM;
     }
-    for (int i = 0; i < args; i++) {
+    for (int i = 0; i < kargc; i++) {
         kargv[i] = (char *) kmalloc((strlen(argv[i]+1)) * sizeof(char));
         if (kargv[i] == NULL) {
             for (int j = 0; j < i; j++) {
@@ -330,7 +333,7 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     struct vnode *vn = NULL;
     err = vfs_open(kpathname, O_RDONLY, 0, &vn);
     if (err) {
-        for (int j = 0; j < args; j++) {
+        for (int j = 0; j < kargc; j++) {
             kfree(kargv[j]);
         }
         kfree(kpathname);
@@ -342,7 +345,7 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     struct addrspace *newas = as_create();
     if (newas == NULL) {
         vfs_close(vn);
-        for (int j = 0; j < args; j++) {
+        for (int j = 0; j < kargc; j++) {
             kfree(kargv[j]);
         }
         kfree(kpathname);
@@ -360,7 +363,7 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     err = load_elf(vn, &entrypoint);
     if (err) {
         vfs_close(vn);
-        for (int j = 0; j < args; j++) {
+        for (int j = 0; j < kargc; j++) {
             kfree(kargv[j]);
         }
         kfree(kpathname);
@@ -375,7 +378,7 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     vaddr_t stackptr;
     err = as_define_stack(newas, &stackptr);
     if (err) {
-        for (int j = 0; j < args; j++) {
+        for (int j = 0; j < kargc; j++) {
             kfree(kargv[j]);
         }
         kfree(kpathname);
@@ -384,11 +387,11 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
     }
 
 
-    /* COPYING BACK ARGS FROM KERNEL LAND TO USER LAND */
+    /* COPYING BACK kargc FROM KERNEL LAND TO USER LAND */
     size_t arg_length = 0;
     size_t pad_length = 0;
     vaddr_t copy_addr = stackptr;
-    for (int i = 0; i < args; i++) {
+    for (int i = 0; i < kargc; i++) {
 
         /* RETRIEVING LENGTH AND PADDING */
         arg_length = strlen(kargv[i]) + 1;                              // +1 due to \0 at the end which need to be added
@@ -401,7 +404,7 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
         /* ACTUAL COPY OF THE ARGUMENT */
         err = copyout(kargv[i], (userptr_t) copy_addr, arg_length);
         if (err) {
-            for (int j = 0; j < args; j++) {
+            for (int j = 0; j < kargc; j++) {
                 kfree(kargv[j]);
             }
             kfree(kpathname);
@@ -409,16 +412,15 @@ int sys_execv_SHELL(const char *pathname, char *argv[]) {
             return err;
         }
     }
-    // char *null_pointer = NULL;
-    // copy_addr -= 4;
-    // err = copyout(null_pointer, (userptr_t) copy_addr, 4);
-    // if (err) {
-    //     return err;
-    // }
+    
+    /* TODO: ASSIGN NULL TO LAST PARAMETER */
+    copy_addr -= 4;
+    bzero((void *) copy_addr, sizeof(vaddr_t));     // like this does not work !
+   
 
     /* WRAP TO USER MODE */
     enter_new_process(
-        (int) args,
+        (int) kargc,
         (userptr_t) stackptr,
         NULL,
         stackptr,
