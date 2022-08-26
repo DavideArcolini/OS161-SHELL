@@ -33,6 +33,7 @@
 #include <kern/wait.h>
 #include <mips/trapframe.h>
 #include <syscall.h>
+#include "exec.h"
 #include "syscall_SHELL.h"
 
 
@@ -212,6 +213,7 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
     }
     memmove(tf_child, ctf, sizeof(struct trapframe));
 
+    /* TO BE DONE: linking parent/child, so that child terminated on parent exit */
     /*DEBUGGING PURPOSE*/
     struct proc *father=curproc;
 
@@ -252,182 +254,82 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval) {
 }
 #endif
 
+
 /**
  * @brief Replaces the currently executing program with a newly loaded program image. This occurs 
  *        within one process; the process id is unchanged. 
  * 
- * @param pathname pathname of the program to run 
+ * @param progname pathname of the program to run 
  * @param argv an array of 0-terminated strings. The array itself should be terminated by a NULL pointer. 
  * @return zero on success, and error value in case of failure 
- */
+*/
 #if OPT_SHELL
-int sys_execv_SHELL(const char *pathname, char *argv[]) {
+int sys_execv_SHELL(const char *progname, char *argv[]) {
 
-    /* SOME ASSERTIONS */
-    KASSERT(curproc != NULL);
+	/* SOME ASSERTIONS */
+	KASSERT(curproc != NULL);
 
-    /* CHECKING INPUT ARGUMENTS */
-    if (pathname == NULL) {
-        return EFAULT;      // One of the kargc is an invalid pointer.
-    } else if (argv == NULL || (int) argv == 0x40000000 || (unsigned int) argv == (unsigned int) 0x80000000) {
-        return EFAULT;
-    }
+	/* CASTING PARAMETER */
+    userptr_t prog = (userptr_t) progname;
+    userptr_t uargv = (userptr_t) argv;
+	
+	vaddr_t entrypoint, stackptr;
+	int argc;
+	int err;
 
-    /* COPYING PATHNAME FROM USER LAND TO KERNEL LAND */
-    // 1) security reason
-    // 2) pathname may be corrupted during its use
-    char *kpathname = (char *) kmalloc(PATH_MAX * sizeof(char));
-    if (kpathname == NULL) {
-        return ENOMEM;
-    }
-    int err = copyinstr((const_userptr_t) pathname, kpathname, PATH_MAX, NULL);
-    if (err) {
-        kfree(kpathname);
-        return err;
-    }
+	/* ALLOCATING SPACE FOR PROGNAME IN KERNEL SIDE */
+	char *kpath = (char *) kmalloc(PATH_MAX * sizeof(char));
+	if (kpath == NULL) {
+		return ENOMEM;
+	}
 
-    /* COUNTING NUMBER OF ARGUMENTS */
-    int kargc;
-    for (kargc = 0; argv[kargc]; kargc++);
-    if (kargc >= ARG_MAX) {
-        kfree(kpathname);
-        return E2BIG;       // too many arguments
-    }
-    for (int i = 1; i < kargc; i++) {
-        if (argv[i] == NULL || (int) argv[i] == 0x40000000 || (unsigned int) argv[i] == (unsigned int) 0x80000000) {
-            return EFAULT;
-        }
-    }
+	/* COPYING PROGNAME IN KERNEL SIDE */
+	err = copyinstr(prog, kpath, PATH_MAX, NULL);
+	if (err) {
+		kfree(kpath);
+		return err;
+	}
 
+	/* COPY ARGV FROM USER SIDE TO KERNEL SIDE */
+	argbuf_t kargv; 
+	argbuf_init(&kargv);	
+	err = argbuf_fromuser(&kargv, uargv);
+	if (err) {
+		argbuf_cleanup(&kargv);
+		kfree(kpath);
+		return err;
+	}
 
-    /* COPYING ARGUMENTS FROM USER LAND TO KERNEL LAND */
-    char **kargv = (char **) kmalloc(kargc * sizeof(char *));
-    if (kargv == NULL) {
-        kfree(kpathname);
-        return ENOMEM;
-    }
-    for (int i = 0; i < kargc; i++) {
-        kargv[i] = (char *) kmalloc((strlen(argv[i]+1)) * sizeof(char));
-        if (kargv[i] == NULL) {
-            for (int j = 0; j < i; j++) {
-                kfree(kargv[j]);
-            }
-            kfree(kpathname);
-            kfree(kargv);
-            return ENOMEM;
-        }
+	/**
+	 * LOAD THE EXECUTABLE
+	 * NB: must not fail from here on, the old address space has been destroyed
+	 * 	   and, therefore, there is nothing to restore in case of failure.
+	 */
+	err = loadexec(kpath, &entrypoint, &stackptr);
+	if (err) {
+		argbuf_cleanup(&kargv);
+		kfree(kpath);
+		return err;
+	}
 
-        /* PERFORMING COPY WITH copyinstr() */
-        err = copyinstr((const_userptr_t) argv[i], kargv[i], strlen(argv[i])+1, NULL);
-        if (err) {
-            for (int j = 0; j < i; j++) {
-                kfree(kargv[j]);
-            }
-            kfree(kpathname);
-            kfree(kargv);
-            return err;
-        }
-    }
+	/* Goodbye kpath, you useless now... */
+	kfree(kpath);
 
-    /* OPENING THE FILE */
-    struct vnode *vn = NULL;
-    err = vfs_open(kpathname, O_RDONLY, 0, &vn);
-    if (err) {
-        for (int j = 0; j < kargc; j++) {
-            kfree(kargv[j]);
-        }
-        kfree(kpathname);
-        kfree(kargv);
-        return err;
-    }
+	/* COPY ARGV FROM KERNEL SIDE TO PROCESS (USER) SIDE */
+	err = argbuf_copyout(&kargv, &stackptr, &argc, &uargv);
+	if (err) {
+		/* if copyout fails, *we* messed up, so panic */
+		panic("execv: copyout_args failed: %s\n", strerror(err));
+	}
 
-    /* CREATING NEW ADDRESS SPACE */
-    struct addrspace *newas = as_create();
-    if (newas == NULL) {
-        vfs_close(vn);
-        for (int j = 0; j < kargc; j++) {
-            kfree(kargv[j]);
-        }
-        kfree(kpathname);
-        kfree(kargv);
-        return ENOMEM;
-    }
+	/* free the argv buffer space */
+	argbuf_cleanup(&kargv);
 
-    /* SWITCH TO IT AND ACTIVATED IT */
-    struct addrspace *oldas = proc_setas(newas);
-    as_destroy(oldas);
-    as_activate();
+	/* Warp to user mode. */
+	enter_new_process(argc, uargv, NULL /*uenv*/, stackptr, entrypoint);
 
-    /* LOAD THE EXECUTABLE */
-    vaddr_t entrypoint;
-    err = load_elf(vn, &entrypoint);
-    if (err) {
-        vfs_close(vn);
-        for (int j = 0; j < kargc; j++) {
-            kfree(kargv[j]);
-        }
-        kfree(kpathname);
-        kfree(kargv);
-        return err;
-    }
-
-    /* DONE WITH THE FILE NOW */
-    vfs_close(vn);
-
-    /* DEFINE THE USER STACK IN THE ADDRESS SPACE */
-    vaddr_t stackptr;
-    err = as_define_stack(newas, &stackptr);
-    if (err) {
-        for (int j = 0; j < kargc; j++) {
-            kfree(kargv[j]);
-        }
-        kfree(kpathname);
-        kfree(kargv);
-        return err;
-    }
-
-
-    /* COPYING BACK kargc FROM KERNEL LAND TO USER LAND */
-    size_t arg_length = 0;
-    size_t pad_length = 0;
-    vaddr_t copy_addr = stackptr;
-    for (int i = 0; i < kargc; i++) {
-
-        /* RETRIEVING LENGTH AND PADDING */
-        arg_length = strlen(kargv[i]) + 1;                              // +1 due to \0 at the end which need to be added
-        pad_length = (arg_length % 4 == 0) ? 0 : 4 - (arg_length % 4);  // test
-
-        /* COMPUTING ADDRESS FOR COPYING */
-        copy_addr -= arg_length;
-        copy_addr -= pad_length;
-
-        /* ACTUAL COPY OF THE ARGUMENT */
-        err = copyout(kargv[i], (userptr_t) copy_addr, arg_length);
-        if (err) {
-            for (int j = 0; j < kargc; j++) {
-                kfree(kargv[j]);
-            }
-            kfree(kpathname);
-            kfree(kargv);
-            return err;
-        }
-    }
-    
-    /* TODO: ASSIGN NULL TO LAST PARAMETER */
-    copy_addr -= 4;
-    bzero((void *) copy_addr, sizeof(vaddr_t));     // like this does not work !
-   
-
-    /* WRAP TO USER MODE */
-    enter_new_process(
-        (int) kargc,
-        (userptr_t) stackptr,
-        NULL,
-        stackptr,
-        entrypoint
-    );
-
-    /* SHOULD NOT GET HERE */
-    return EINVAL;
+	/* enter_new_process does not return. */
+	panic("enter_new_process returned\n");
+	return EINVAL;
 }
 #endif

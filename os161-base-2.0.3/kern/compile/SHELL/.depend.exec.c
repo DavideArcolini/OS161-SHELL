@@ -1,4 +1,4 @@
-syscall_PROC.o: ../../syscall/syscall_PROC.c ../../include/types.h \
+exec.o: ../../syscall/exec.c ../../include/types.h \
  ../../include/kern/types.h includelinks/kern/machine/types.h \
  includelinks/machine/types.h ../../include/proc.h \
  ../../include/spinlock.h ../../include/cdefs.h ../../include/hangman.h \
@@ -18,5 +18,4 @@ syscall_PROC.o: ../../syscall/syscall_PROC.c ../../include/types.h \
  ../../include/stat.h ../../include/kern/stat.h \
  ../../include/kern/stattypes.h ../../include/addrspace.h \
  ../../include/vm.h includelinks/machine/vm.h opt-dumbvm.h \
- ../../include/kern/wait.h ../../include/syscall.h ../../include/exec.h \
- ../../include/syscall_SHELL.h
+ ../../include/kern/wait.h ../../include/syscall.h ../../include/exec.h

@@ -277,7 +277,6 @@ static int proc_init(struct proc *proc, const char *name) {
 	/* RELEASING THE SPINLOCK */
 	spinlock_release(&processTable.lk);
 	if (proc->p_pid <= 0) {
-		kprintf("[ERROR] process initialization failed...\n");
 		return proc->p_pid;
 	}
 
@@ -393,8 +392,6 @@ proc_create(const char *name)
 		kfree(proc);
 		return NULL;
 	}
-
-	//kprintf("[DEBUG] process created with PID: %d.\n", proc->p_pid);
 #endif
 
 	return proc;

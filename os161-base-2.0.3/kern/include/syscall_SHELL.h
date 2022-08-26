@@ -252,4 +252,9 @@ int sys_fork_SHELL(struct trapframe *ctf, pid_t *retval);
 int sys_execv_SHELL(const char *pathname, char *argv[]);
 #endif
 
+#if OPT_SHELL
+/* Setup function for exec. */
+void exec_bootstrap(void);
+#endif
+
 #endif /* _SYSCALL_SHELL_H_ */

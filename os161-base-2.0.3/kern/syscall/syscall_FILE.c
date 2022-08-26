@@ -538,7 +538,7 @@ int sys_lseek_SHELL(int fd, off_t pos, int whence, int32_t *retval_low32, int32_
             return EINVAL;
     }
 
-    /* TODO: MAYBE TRY TO SEEK THE NEW CURRENT POSITION AND CHECK IF IT WORKS */
+    /* TODO: MAYBE TRY TO SEEK THE NEW CURRENT POSITION AND CHECK IF IT WORKS (?) */
 
     /* UPDATING FILE */
     of->offset = retval;

@@ -396,6 +396,7 @@ defoption shell
 
 optfile shell syscall/syscall_FILE.c
 optfile shell syscall/syscall_PROC.c
+optfile shell syscall/exec.c
 
 ########################################
 #                                      #

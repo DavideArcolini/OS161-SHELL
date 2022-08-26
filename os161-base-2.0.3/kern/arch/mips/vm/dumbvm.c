@@ -117,7 +117,6 @@ void vm_bootstrap(void) {
 	bitmap_freePages = (unsigned int *) kmalloc(number_ram_pages * sizeof(unsigned int));
 	bitmap_sizePages = (unsigned long *) kmalloc(number_ram_pages * sizeof(unsigned long));
 	if (bitmap_freePages == NULL || bitmap_sizePages == NULL) {
-		kprintf("[ERROR] kmalloc() failed execution");
 		bitmap_freePages = NULL;
 		bitmap_sizePages = NULL;
 		return;

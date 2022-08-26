@@ -47,6 +47,10 @@
 #include <vfs.h>
 #include <device.h>
 #include <syscall.h>
+#if OPT_SHELL
+#include "syscall_SHELL.h"
+#include "exec.h"
+#endif
 #include <test.h>
 #include <version.h>
 #include "autoconf.h"  // for pseudoconfig
@@ -126,6 +130,9 @@ boot(void)
 	/* Late phase of initialization. */
 	vm_bootstrap();
 	kprintf_bootstrap();
+#if OPT_SHELL
+	exec_bootstrap();
+#endif
 	thread_start_cpus();
 
 	/* Default bootfs - but ignore failure, in case emu0 doesn't exist */
