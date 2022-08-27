@@ -388,7 +388,7 @@ int sys_chdir_SHELL(const char *pathname) {
     if (kbuffer == NULL) {
         return ENOMEM;
     }
-    int err = copyinstr((const_userptr_t) pathname, kbuffer, sizeof(kbuffer), NULL);
+    int err = copyinstr((const_userptr_t) pathname, kbuffer, PATH_MAX, NULL);
     if (err) {
         kfree(kbuffer);
         return err;     // may return EFAULT, ENAMETOOLONG
