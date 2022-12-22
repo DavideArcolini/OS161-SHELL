@@ -1,3 +1,5 @@
+![Frontpage](./Frontpage.png)
+
 # OS161 - SHELL
 - **Project**: c2 (shell)
 - **Year**: A.Y. 2021/2022
